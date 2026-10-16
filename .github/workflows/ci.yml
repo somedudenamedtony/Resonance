@@ -26,3 +26,32 @@ jobs:
         run: |
           echo "Gzipped app bundle:"
           find app/dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' \) -exec gzip -c {} \; | wc -c
+
+  firmware:
+    name: ESP32-S3 firmware build (ESP-IDF v5.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build the web app for the LittleFS image
+        run: npm ci && npm run build
+      - name: Build firmware in espressif/idf
+        run: |
+          docker run --rm -v "$PWD:/project" -w /project/firmware espressif/idf:v5.3.2 \
+            bash -c "idf.py set-target esp32s3 && idf.py build"
+      - name: Upload flashable images
+        uses: actions/upload-artifact@v4
+        with:
+          name: resonance-bridge-esp32s3
+          path: |
+            firmware/build/resonance-bridge.bin
+            firmware/build/bootloader/bootloader.bin
+            firmware/build/partition_table/partition-table.bin
+            firmware/build/ota_data_initial.bin
+            firmware/build/littlefs.bin
+            firmware/build/flasher_args.json
+            firmware/build/flash_args
+          if-no-files-found: warn
