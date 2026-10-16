@@ -77,11 +77,17 @@ Exit: type `version` in a browser console page, get the NanoVNA's reply over Wi-
 Also done ahead of M2/M3: binary streaming, segmenting, app hosting from LittleFS, and the
 calibration math validated end to end against emulated raw data.
 
-### Next without hardware
+### M3 — calibrate and check (app done; accuracy check needs hardware)
 
-- M3 app work: guided Calibrate flow and applying calibration in Check (the math is done
-  and proven in `emulator/test/e2e.test.ts`).
-- M4: Tune screen with the trim coach and live re-sweep, against the emulator.
+- [x] On-phone storage (IndexedDB, memory fallback): `app/src/storage.ts`
+- [x] Calibration model, staleness (7 days or device change), apply-if-covered: `app/src/cal.ts`
+- [x] Guided Calibrate screen: open/short/load, pictures, wrong-standard rejection
+- [x] Check applies calibration; Uncalibrated badge links to Calibrate; Home nudge
+- [x] Scan all bands (160m–6m) with one-line verdicts; tap-to-explain readings
+- [x] Tests: guided calibration vs simulator and vs the C bridge + emulator
+- [ ] Hardware: verdicts match NanoVNA-Saver within ±0.05 SWR on three antennas
+
+### Next: M4 — Tune (trim coach screen, live re-sweep, cut log)
 
 ### Trying the app
 

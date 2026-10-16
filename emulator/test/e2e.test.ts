@@ -174,3 +174,21 @@ describe("app ↔ C bridge ↔ emulated NanoVNA", () => {
     });
   });
 });
+
+describe("app calibration flow over the C bridge", () => {
+  it("guided session + check gives the true verdict with realistic raw errors", async () => {
+    const { CalibrationSession } = await import("../../app/src/cal");
+    const { checkOneBand } = await import("../../app/src/check");
+    const { client, bridge } = await setup({ nanovna: { errorTerms: typicalNanoVnaErrorTerms, noise: 0.0005 } });
+    const session = new CalibrationSession();
+    for (const kind of ["open", "short", "load"] as const) {
+      bridge.nanovna.options.port1 = { kind };
+      expect((await session.measure(client, kind)).ok).toBe(true);
+    }
+    bridge.nanovna.options.port1 = { kind: "antenna", antenna: good20 };
+    const check = await checkOneBand(client, band20, session.finish());
+    expect(check.calibrated).toBe(true);
+    expect(check.result.level).toBe("good");
+    expect(Math.abs(check.result.metrics.resonanceHz! - good20.f0Hz) / good20.f0Hz).toBeLessThan(0.001);
+  });
+});

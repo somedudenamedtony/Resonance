@@ -360,6 +360,9 @@ button {
 }
 
 .reading {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
   padding: 10px 8px;
   border: 1px solid var(--rule);
   border-radius: var(--radius);
@@ -646,4 +649,82 @@ input[type="text"] {
 .error + .actions,
 .cal-card + .error {
   margin-top: 12px;
+}
+
+.reading[aria-expanded="true"] {
+  border-color: var(--trace);
+  background: var(--trace-wash);
+}
+
+.explain {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--trace-wash);
+}
+
+.explain-hint {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.all-bands {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.all-row {
+  display: grid;
+  grid-template-columns: 56px 96px 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: none;
+  border-top: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.all-bands li:first-child .all-row {
+  border-top: none;
+}
+
+.all-row:disabled {
+  cursor: default;
+  color: var(--muted);
+}
+
+.all-chip {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.all-row.good .all-chip {
+  color: var(--good);
+}
+
+.all-row.usable .all-chip {
+  color: var(--usable);
+}
+
+.all-row.poor .all-chip,
+.all-row.error .all-chip {
+  color: var(--poor);
+}
+
+.all-detail {
+  font-size: 14px;
+  color: var(--muted);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

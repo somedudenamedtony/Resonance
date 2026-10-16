@@ -102,3 +102,26 @@ describe("guided calibration against the simulator", () => {
     client.stop();
   });
 });
+
+describe("checks", () => {
+  it("explains SWR in plain words", async () => {
+    const { explainSwr } = await import("../src/check");
+    expect(explainSwr(1.4)).toMatch(/about 3% of your power/);
+    expect(explainSwr(1.02)).toMatch(/under 1%/);
+    expect(explainSwr(3)).toMatch(/cut power/);
+    expect(explainSwr(Infinity)).toMatch(/off the scale/);
+  });
+
+  it("scans every HF band plus 6m with one-line verdicts", async () => {
+    const { bandsById, checkOneBand, SCAN_ALL_ORDER } = await import("../src/check");
+    const { sim, client } = await simClient();
+    sim.configure({ errorTerms: () => ({ ed: { re: 0, im: 0 }, es: { re: 0, im: 0 }, er: { re: 1, im: 0 } }), antennaId: "good20" });
+    const results = [];
+    for (const band of bandsById(SCAN_ALL_ORDER)) results.push(await checkOneBand(client, band, null));
+    expect(results).toHaveLength(11);
+    const levels = Object.fromEntries(results.map((r) => [r.result.band.id, r.result.level]));
+    expect(levels["20m"]).toBe("good");
+    expect(levels["80m"]).toBe("poor");
+    client.stop();
+  });
+});
