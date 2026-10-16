@@ -195,9 +195,14 @@ void rc_bridge_client_connected(rc_bridge_t *b, uint32_t now_ms)
     send_device(b);
 }
 
+static void ota_fail(rc_bridge_t *b, const char *code, const char *message);
+
 void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms)
 {
     b->now = now_ms;
+    if (b->ota_active && (uint32_t)(now_ms - b->ota_last_ms) > RC_OTA_IDLE_TIMEOUT_MS) {
+        ota_fail(b, "timeout", "The update stalled and was cancelled. Nothing was changed.");
+    }
     rc_shell_tick(&b->shell, now_ms);
     pump(b);
 }
@@ -599,6 +604,102 @@ static void handle_capture_msg(rc_bridge_t *b)
     send_json(b, o);
 }
 
+// ---------- updates over Wi-Fi ----------
+
+static void ota_fail(rc_bridge_t *b, const char *code, const char *message)
+{
+    if (b->ota_active && b->io.ota_abort) b->io.ota_abort(b->io.user);
+    b->ota_active = false;
+    send_error(b, code, message, -1);
+    logf_(b, "update failed: %s", message);
+}
+
+static void handle_ota_begin(rc_bridge_t *b, const cJSON *o)
+{
+    double size;
+    const char *target = get_string(o, "target");
+    if (!target || (strcmp(target, "firmware") != 0 && strcmp(target, "app") != 0) || !get_number(o, "size", &size) ||
+        size < 1 || size > RC_OTA_MAX_SIZE || size != floor(size)) {
+        send_error(b, "bad_request", "ota.begin needs target firmware or app and a size", -1);
+        return;
+    }
+    if (!b->io.ota_begin || !b->io.ota_write || !b->io.ota_end) {
+        send_error(b, "internal", "This bridge can't update over Wi-Fi.", -1);
+        return;
+    }
+    if (b->ota_active && b->io.ota_abort) b->io.ota_abort(b->io.user);  // a new begin replaces a stalled one
+    b->ota_active = false;
+    char err[96] = "";
+    if (!b->io.ota_begin(b->io.user, target, (uint32_t)size, err, sizeof err)) {
+        send_error(b, "internal", err[0] ? err : "Couldn't start the update.", -1);
+        return;
+    }
+    snprintf(b->ota_target, sizeof b->ota_target, "%s", target);
+    b->ota_active = true;
+    b->ota_size = (uint32_t)size;
+    b->ota_received = 0;
+    b->ota_last_ms = b->now;
+    logf_(b, "update started: %s, %lu bytes", target, (unsigned long)b->ota_size);
+    cJSON *r = msg("ok");
+    cJSON_AddStringToObject(r, "for", "ota.begin");
+    send_json(b, r);
+}
+
+// Cheap sanity check on the first bytes so a wrong file is refused before anything is erased.
+static bool ota_magic_ok(const char *target, const uint8_t *d, size_t n)
+{
+    if (strcmp(target, "firmware") == 0) return n >= 1 && d[0] == 0xE9;  // ESP image header
+    return n >= 16 && memcmp(d + 8, "littlefs", 8) == 0;                 // LittleFS superblock
+}
+
+void rc_bridge_client_binary(rc_bridge_t *b, const uint8_t *data, size_t len, uint32_t now_ms)
+{
+    b->now = now_ms;
+    if (len < RC_FRAME_HEADER || data[0] != RC_FRAME_OTA) return;  // nothing else is sent app → bridge
+    if (!b->ota_active) {
+        send_error(b, "bad_request", "No update in progress. Send ota.begin first.", -1);
+        return;
+    }
+    uint32_t offset = (uint32_t)data[4] | ((uint32_t)data[5] << 8) | ((uint32_t)data[6] << 16) | ((uint32_t)data[7] << 24);
+    const uint8_t *chunk = data + RC_FRAME_HEADER;
+    size_t n = len - RC_FRAME_HEADER;
+    if (offset != b->ota_received) {
+        ota_fail(b, "bad_request", "Update data arrived out of order. Nothing was changed.");
+        return;
+    }
+    if (n == 0 || offset + n > b->ota_size) {
+        ota_fail(b, "bad_request", "The update is larger than announced.");
+        return;
+    }
+    if (offset == 0 && !ota_magic_ok(b->ota_target, chunk, n)) {
+        ota_fail(b, "bad_request",
+                 strcmp(b->ota_target, "firmware") == 0 ? "That isn't an ESP32 firmware image (resonance-bridge.bin)."
+                                                       : "That isn't a LittleFS web app image (littlefs.bin).");
+        return;
+    }
+    char err[96] = "";
+    if (!b->io.ota_write(b->io.user, chunk, n, err, sizeof err)) {
+        ota_fail(b, "internal", err[0] ? err : "Writing the update failed. Nothing was changed.");
+        return;
+    }
+    b->ota_received += (uint32_t)n;
+    b->ota_last_ms = now_ms;
+    cJSON *ack = msg("ota.ack");
+    cJSON_AddNumberToObject(ack, "received", b->ota_received);
+    send_json(b, ack);
+    if (b->ota_received == b->ota_size) {
+        b->ota_active = false;
+        if (!b->io.ota_end(b->io.user, err, sizeof err)) {
+            send_error(b, "internal", err[0] ? err : "The update didn't verify. Nothing was changed.", -1);
+            return;
+        }
+        logf_(b, "update finished: %s", b->ota_target);
+        cJSON *r = msg("ok");
+        cJSON_AddStringToObject(r, "for", "ota.end");
+        send_json(b, r);
+    }
+}
+
 static void handle_wifi(rc_bridge_t *b, const cJSON *o)
 {
     const char *mode = get_string(o, "mode");
@@ -647,7 +748,7 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
     } else if (strcmp(type, "wifi.set") == 0) {
         handle_wifi(b, o);
     } else if (strcmp(type, "ota.begin") == 0) {
-        send_error(b, "internal", "Updates over Wi-Fi aren't supported yet.", -1);
+        handle_ota_begin(b, o);
     } else {
         send_error(b, "bad_request", "unknown message type", -1);
     }

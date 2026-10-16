@@ -249,7 +249,47 @@ typedef struct {
     uint32_t cap_len;
     bool cap_order_ok;
     size_t chunk;  // deliver device output in chunks of this size
+    uint8_t ota[8192];
+    uint32_t ota_len;
+    int ota_begins, ota_ends, ota_aborts;
+    bool ota_fail_end;
 } harness_t;
+
+static bool h_ota_begin(void *u, const char *target, uint32_t size, char *err, size_t cap)
+{
+    harness_t *h = u;
+    h->ota_begins++;
+    h->ota_len = 0;
+    if (size > sizeof h->ota) {
+        snprintf(err, cap, "too big for test");
+        return false;
+    }
+    return true;
+}
+
+static bool h_ota_write(void *u, const uint8_t *d, size_t n, char *err, size_t cap)
+{
+    harness_t *h = u;
+    memcpy(h->ota + h->ota_len, d, n);
+    h->ota_len += (uint32_t)n;
+    return true;
+}
+
+static bool h_ota_end(void *u, char *err, size_t cap)
+{
+    harness_t *h = u;
+    h->ota_ends++;
+    if (h->ota_fail_end) {
+        snprintf(err, cap, "image didn't verify");
+        return false;
+    }
+    return true;
+}
+
+static void h_ota_abort(void *u)
+{
+    ((harness_t *)u)->ota_aborts++;
+}
 
 static void h_serial_write(void *u, const uint8_t *d, size_t n)
 {
@@ -294,7 +334,14 @@ static harness_t *h_new(bool binary, uint16_t max_points)
     h->frame_order_ok = true;
     h->cap_order_ok = true;
     h->chunk = 37;
-    rc_bridge_io_t io = {h_serial_write, h_send_text, h_send_binary, NULL, NULL, h};
+    rc_bridge_io_t io = {.serial_write = h_serial_write,
+                         .send_text = h_send_text,
+                         .send_binary = h_send_binary,
+                         .ota_begin = h_ota_begin,
+                         .ota_write = h_ota_write,
+                         .ota_end = h_ota_end,
+                         .ota_abort = h_ota_abort,
+                         .user = h};
     rc_bridge_init(h->b, &io, 0);
     fake_init(&h->dev, binary, max_points);
     return h;
@@ -584,6 +631,80 @@ static void test_bridge_capture(void)
     h_free(h);
 }
 
+static void ota_chunk(harness_t *h, uint32_t offset, const uint8_t *d, size_t n)
+{
+    uint8_t f[1100] = {RC_FRAME_OTA, 0, 0, 0, (uint8_t)offset, (uint8_t)(offset >> 8), (uint8_t)(offset >> 16),
+                       (uint8_t)(offset >> 24)};
+    memcpy(f + 8, d, n);
+    rc_bridge_client_binary(h->b, f, n + 8, h->now);
+}
+
+static void test_bridge_ota(void)
+{
+    harness_t *h = h_new(true, 401);
+    uint8_t img[3000];
+    for (int i = 0; i < 3000; i++) img[i] = (uint8_t)(i * 13);
+    img[0] = 0xE9;
+
+    // Chunks before begin are refused.
+    ota_chunk(h, 0, img, 100);
+    cJSON *e = h_last(h, "error");
+    CHECK(e && strcmp(str(e, "code"), "bad_request") == 0);
+    cJSON_Delete(e);
+
+    h_client(h, "{\"v\":1,\"type\":\"ota.begin\",\"target\":\"bogus\",\"size\":10}");
+    e = h_last(h, "error");
+    CHECK(e && strcmp(str(e, "code"), "bad_request") == 0);
+    cJSON_Delete(e);
+    CHECK(h->ota_begins == 0);
+
+    // A full firmware image in 1 KB chunks.
+    h_client(h, "{\"v\":1,\"type\":\"ota.begin\",\"target\":\"firmware\",\"size\":3000}");
+    cJSON *ok = h_last(h, "ok");
+    CHECK(ok && strcmp(str(ok, "for"), "ota.begin") == 0);
+    cJSON_Delete(ok);
+    for (uint32_t off = 0; off < 3000; off += 1024) ota_chunk(h, off, img + off, 3000 - off < 1024 ? 3000 - off : 1024);
+    cJSON *ack = h_last(h, "ota.ack");
+    CHECK(ack && num(ack, "received") == 3000);
+    cJSON_Delete(ack);
+    ok = h_last(h, "ok");
+    CHECK(ok && strcmp(str(ok, "for"), "ota.end") == 0);
+    cJSON_Delete(ok);
+    CHECK(h->ota_ends == 1 && h->ota_len == 3000 && memcmp(h->ota, img, 3000) == 0);
+
+    // Wrong file for the target is refused on the first chunk.
+    h_client(h, "{\"v\":1,\"type\":\"ota.begin\",\"target\":\"app\",\"size\":3000}");
+    ota_chunk(h, 0, img, 1024);
+    e = h_last(h, "error");
+    CHECK(e && strstr(str(e, "message"), "littlefs.bin"));
+    cJSON_Delete(e);
+    CHECK(h->ota_aborts == 1 && !h->b->ota_active);
+
+    // Out-of-order chunk aborts.
+    h_client(h, "{\"v\":1,\"type\":\"ota.begin\",\"target\":\"firmware\",\"size\":3000}");
+    ota_chunk(h, 0, img, 1024);
+    ota_chunk(h, 2048, img + 2048, 952);
+    CHECK(h->ota_aborts == 2 && !h->b->ota_active);
+
+    // Stalled update times out.
+    h_client(h, "{\"v\":1,\"type\":\"ota.begin\",\"target\":\"firmware\",\"size\":3000}");
+    ota_chunk(h, 0, img, 1024);
+    h_run(h, RC_OTA_IDLE_TIMEOUT_MS + 100);
+    e = h_last(h, "error");
+    CHECK(e && strcmp(str(e, "code"), "timeout") == 0);
+    cJSON_Delete(e);
+    CHECK(h->ota_aborts == 3);
+
+    // Verification failure at the end is reported.
+    h->ota_fail_end = true;
+    h_client(h, "{\"v\":1,\"type\":\"ota.begin\",\"target\":\"firmware\",\"size\":1000}");
+    ota_chunk(h, 0, img, 1000);
+    e = h_last(h, "error");
+    CHECK(e && strstr(str(e, "message"), "verify"));
+    cJSON_Delete(e);
+    h_free(h);
+}
+
 int main(void)
 {
     RUN(test_shell_text_response);
@@ -605,6 +726,7 @@ int main(void)
     RUN(test_bridge_timeout_then_recovers);
     RUN(test_bridge_raw);
     RUN(test_bridge_capture);
+    RUN(test_bridge_ota);
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

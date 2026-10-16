@@ -19,7 +19,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `raw` | `command: string` | `raw.reply` |
 | `capture` | — | `capture.begin`, binary frames of kind `0x03`, `capture.end` |
 | `wifi.set` | `mode: "ap" \| "sta"`, `ssid?: string`, `password?: string` | `ok`, then the bridge restarts Wi-Fi |
-| `ota.begin` | `target: "firmware" \| "app"`, `size: number` | `ok`; app then sends the image as binary frames of type `0x02` |
+| `ota.begin` | `target: "firmware" \| "app"`, `size: number` | `ok`; app then sends the image as binary frames of kind `0x02`; each gets `ota.ack`; the last gets `ok` `for: "ota.end"` (or `error`) |
 
 ### Bridge → app
 
@@ -31,6 +31,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `raw.reply` | `command`, `text` |
 | `capture.begin` | `width`, `height`, `format: "rgb565be"` |
 | `capture.end` | `bytes` |
+| `ota.ack` | `received` (bytes so far) |
 | `ok` | `for: string` (the request `type`) |
 | `error` | `code: "no_device" \| "timeout" \| "busy" \| "bad_request" \| "internal"`, `message`, `id?` |
 
@@ -75,6 +76,18 @@ Record size is 16 bytes (S11 only) or 24 bytes (with S21). Frames should stay un
 Values are **raw** (uncorrected): the bridge's scan mask sets the NanoVNA-D "no
 calibration" and "no electrical delay" bits (0x08, 0x10), and the app applies its own
 calibration. The device's stored calibration is never changed.
+
+### Update chunk (kind `0x02`, app → bridge)
+
+Header bytes 4–7 are a u32 byte offset; the payload (≤ 4088 bytes) is the next slice of the
+image. Rules:
+
+- Chunks must arrive in order (`offset` == bytes received so far) and not exceed `size`.
+- The first chunk is checked: firmware must start with `0xE9` (ESP image), the app image must
+  be LittleFS (`"littlefs"` at byte 8). A wrong file is refused before anything is written.
+- 30 s without a chunk cancels the update. Any failure leaves the running image untouched.
+- `firmware` (`resonance-bridge.bin`) goes to the inactive OTA slot; after `ok` the bridge
+  reboots into it. `app` (`littlefs.bin`) rewrites the web app partition, then the bridge reboots.
 
 ## How the bridge talks to the NanoVNA
 

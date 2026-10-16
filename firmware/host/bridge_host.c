@@ -83,6 +83,62 @@ static void io_log(void *u, const char *msg)
     send_frame(K_LOG, msg, strlen(msg));
 }
 
+// Updates on the host: written to $RESONANCE_OTA_DIR/<target>.bin (or discarded), so the
+// emulator tests can check exactly what arrived.
+static FILE *g_ota = NULL;
+static char g_ota_path[512];
+
+static bool io_ota_begin(void *u, const char *target, uint32_t size, char *err, size_t cap)
+{
+    const char *dir = getenv("RESONANCE_OTA_DIR");
+    if (g_ota) fclose(g_ota);
+    g_ota = NULL;
+    if (dir) {
+        snprintf(g_ota_path, sizeof g_ota_path, "%s/%s.bin.part", dir, target);
+        g_ota = fopen(g_ota_path, "wb");
+        if (!g_ota) {
+            snprintf(err, cap, "can't write %s", g_ota_path);
+            return false;
+        }
+    }
+    char m[96];
+    snprintf(m, sizeof m, "ota.begin %s %u", target, (unsigned)size);
+    io_log(u, m);
+    return true;
+}
+
+static bool io_ota_write(void *u, const uint8_t *d, size_t n, char *err, size_t cap)
+{
+    if (g_ota && fwrite(d, 1, n, g_ota) != n) {
+        snprintf(err, cap, "short write");
+        return false;
+    }
+    return true;
+}
+
+static bool io_ota_end(void *u, char *err, size_t cap)
+{
+    if (g_ota) {
+        fclose(g_ota);
+        g_ota = NULL;
+        char final[512];
+        snprintf(final, sizeof final, "%.*s", (int)(strlen(g_ota_path) - 5), g_ota_path);
+        rename(g_ota_path, final);
+    }
+    io_log(u, "ota.end ok (host: no reboot)");
+    return true;
+}
+
+static void io_ota_abort(void *u)
+{
+    if (g_ota) {
+        fclose(g_ota);
+        g_ota = NULL;
+        remove(g_ota_path);
+    }
+    io_log(u, "ota.abort");
+}
+
 // Reassemble stdin frames.
 static uint8_t g_in[1 << 16];
 static size_t g_in_len = 0;
@@ -92,6 +148,8 @@ static void handle_frame(uint8_t kind, const uint8_t *p, size_t len)
     uint32_t now = now_ms();
     if (kind == K_TEXT) {
         rc_bridge_client_text(&g_bridge, (const char *)p, len, now);
+    } else if (kind == K_BINARY) {
+        rc_bridge_client_binary(&g_bridge, p, len, now);
     } else if (kind == K_CONTROL) {
         if (len == 6 && memcmp(p, "attach", 6) == 0) {
             g_attached = true;
@@ -123,7 +181,17 @@ static void drain_stdin_frames(void)
 
 int main(void)
 {
-    rc_bridge_io_t io = {io_serial_write, io_send_text, io_send_binary, io_wifi_set, io_log, NULL};
+    rc_bridge_io_t io = {
+        .serial_write = io_serial_write,
+        .send_text = io_send_text,
+        .send_binary = io_send_binary,
+        .wifi_set = io_wifi_set,
+        .log = io_log,
+        .ota_begin = io_ota_begin,
+        .ota_write = io_ota_write,
+        .ota_end = io_ota_end,
+        .ota_abort = io_ota_abort,
+    };
     rc_bridge_init(&g_bridge, &io, now_ms());
     io_log(NULL, "resonance-bridge-host " RC_BRIDGE_VERSION " ready");
 

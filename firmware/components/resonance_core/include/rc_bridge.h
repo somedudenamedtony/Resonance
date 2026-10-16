@@ -34,6 +34,12 @@ typedef struct {
     bool (*wifi_set)(void *user, bool sta, const char *ssid, const char *password);
     // Optional log sink.
     void (*log)(void *user, const char *msg);
+    // Optional updates over Wi-Fi. `target` is "firmware" or "app" (the LittleFS image).
+    // Each returns false (and may fill `err`) to refuse/abort.
+    bool (*ota_begin)(void *user, const char *target, uint32_t size, char *err, size_t err_cap);
+    bool (*ota_write)(void *user, const uint8_t *data, size_t len, char *err, size_t err_cap);
+    bool (*ota_end)(void *user, char *err, size_t err_cap);
+    void (*ota_abort)(void *user);
     void *user;
 } rc_bridge_io_t;
 
@@ -99,6 +105,13 @@ typedef struct rc_bridge {
     // Capture: screen bytes accumulate after the frame header until a frame is full
     size_t cap_fill;
     uint32_t cap_offset;
+
+    // Update over Wi-Fi
+    bool ota_active;
+    char ota_target[12];
+    uint32_t ota_size;
+    uint32_t ota_received;
+    uint32_t ota_last_ms;
 } rc_bridge_t;
 
 void rc_bridge_init(rc_bridge_t *b, const rc_bridge_io_t *io, uint32_t now_ms);
@@ -109,6 +122,8 @@ void rc_bridge_serial_rx(rc_bridge_t *b, const uint8_t *data, size_t len, uint32
 
 void rc_bridge_client_connected(rc_bridge_t *b, uint32_t now_ms);
 void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_t now_ms);
+// A binary WebSocket frame from the app (update chunks, kind 0x02).
+void rc_bridge_client_binary(rc_bridge_t *b, const uint8_t *data, size_t len, uint32_t now_ms);
 
 void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms);
 
@@ -118,6 +133,9 @@ void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint1
                           uint16_t *lcd_h);
 
 #define RC_FRAME_CAPTURE 0x03
+#define RC_FRAME_OTA 0x02
+#define RC_OTA_IDLE_TIMEOUT_MS 30000
+#define RC_OTA_MAX_SIZE (12u * 1024u * 1024u)
 
 #ifdef __cplusplus
 }
