@@ -51,7 +51,7 @@ export function Readings({ result }: { result: CheckResult }) {
         </button>
         <button class="reading" aria-expanded={open === "bw"} onClick={() => toggle("bw")}>
           <strong class="num">
-            {m.bw2 ? khz(m.bw2.widthHz) : "0"}
+            {m.bw2 ? khz(m.bw2.widthHz) : "none"}
             {m.bw2?.clipped ? "+" : ""}
           </strong>
           <span>2:1 width, kHz</span>

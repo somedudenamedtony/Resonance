@@ -6,6 +6,8 @@ interface Props {
   stopHz: number;
   band?: { startHz: number; stopHz: number; name: string };
   min?: { freqHz: number; swr: number };
+  /** Earlier sweeps drawn dashed behind the main trace (e.g. the baseline). */
+  overlays?: { freqHz: readonly number[]; swr: readonly number[]; label: string }[];
 }
 
 const W = 360;
@@ -14,15 +16,17 @@ const PAD = { l: 34, r: 12, t: 14, b: 30 };
 const SWR_MAX = 3;
 const TICKS = [1, 1.5, 2, 3];
 
-export function SwrChart({ freqHz, swr, startHz, stopHz, band, min }: Props) {
+export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays }: Props) {
   const x = (f: number) => PAD.l + ((f - startHz) / (stopHz - startHz)) * (W - PAD.l - PAD.r);
   const y = (s: number) => {
     const v = Math.min(Math.max(s, 1), SWR_MAX);
     return PAD.t + ((SWR_MAX - v) / (SWR_MAX - 1)) * (H - PAD.t - PAD.b);
   };
-  const path = freqHz
-    .map((f, i) => `${i === 0 ? "M" : "L"}${x(f).toFixed(1)} ${y(swr[i] ?? SWR_MAX).toFixed(1)}`)
-    .join(" ");
+  const toPath = (fs: readonly number[], ss: readonly number[]) =>
+    fs
+      .map((f, i) => `${i === 0 ? "M" : "L"}${x(Math.min(Math.max(f, startHz), stopHz)).toFixed(1)} ${y(ss[i] ?? SWR_MAX).toFixed(1)}`)
+      .join(" ");
+  const path = toPath(freqHz, swr);
   const mhz = (hz: number) => (hz / 1e6).toFixed(hz >= 1e8 ? 1 : 3).replace(/0+$/, "").replace(/\.$/, "");
   const minLabelRight = min ? x(min.freqHz) < W / 2 : true;
 
@@ -75,6 +79,19 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min }: Props) {
       <text x={W - PAD.r} y={H - 10} text-anchor="end" font-size="11" fill="var(--muted)">
         MHz
       </text>
+      {overlays?.map((o) => (
+        <path
+          key={o.label}
+          d={toPath(o.freqHz, o.swr)}
+          fill="none"
+          stroke="var(--muted)"
+          stroke-width="2"
+          stroke-dasharray="5 4"
+          stroke-linejoin="round"
+        >
+          <title>{o.label}</title>
+        </path>
+      ))}
       {path && (
         <path class="trace-path" d={path} fill="none" stroke="var(--trace)" stroke-width="2.5" stroke-linejoin="round" />
       )}

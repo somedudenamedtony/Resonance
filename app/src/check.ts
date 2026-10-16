@@ -6,6 +6,7 @@ import {
   findBand,
   scanRangeFor,
   type Sweep,
+  type SwrThresholds,
   US_BAND_PLAN,
 } from "@resonance/analysis";
 import type { BridgeClient } from "./bridge/client";
@@ -28,12 +29,13 @@ export async function checkOneBand(
   band: Band,
   cal: Calibration | null,
   onPartial?: (partial: Sweep, received: number) => void,
+  thresholds?: SwrThresholds,
 ): Promise<LastCheck> {
   const raw = await client.scan({ ...scanRangeFor(band), points: CHECK_POINTS }, (p) =>
     onPartial?.(applyCalibration(cal, { freqHz: [...p.partial.freqHz], s11: [...p.partial.s11] }).sweep, p.received),
   );
   const { sweep, calibrated } = applyCalibration(cal, raw);
-  return { result: checkBand(sweep, band), sweep, calibrated, at: Date.now() };
+  return { result: checkBand(sweep, band, { thresholds }), sweep, calibrated, at: Date.now() };
 }
 
 /** Plain-English meaning of the three headline readings (spec: teach in place). */

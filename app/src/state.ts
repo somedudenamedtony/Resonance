@@ -5,6 +5,7 @@ import type { DeviceStatus } from "./bridge/protocol";
 import { SimulatedTransport } from "./bridge/simulator";
 import { type Transport, WebSocketTransport } from "./bridge/transport";
 import { calState, loadForm, type SavedCalibration } from "./cal";
+import { type AntennaProfile, DEFAULT_SETTINGS, listProfiles, loadSettings, type Settings } from "./history";
 import { MemoryStore, openStore, type Store } from "./storage";
 
 /**
@@ -30,6 +31,9 @@ export type Route =
   | { name: "check" }
   | { name: "calibrate" }
   | { name: "tune" }
+  | { name: "antennas" }
+  | { name: "profile"; id: string }
+  | { name: "settings" }
   | { name: "soon"; job: string; milestone: string };
 
 export const client = new BridgeClient(chooseTransport());
@@ -71,8 +75,19 @@ export async function saveCalibration(saved: SavedCalibration): Promise<void> {
   activeCal.value = saved;
 }
 
+export const settings = signal<Settings>(DEFAULT_SETTINGS);
+export const profiles = signal<AntennaProfile[]>([]);
+/** Antenna the next check is for; null = quick check. */
+export const checkProfileId = signal<string | null>(null);
+
+export async function refreshProfiles(): Promise<void> {
+  profiles.value = await listProfiles(store);
+}
+
 export async function initState(): Promise<void> {
   store = await openStore();
+  settings.value = await loadSettings(store);
+  await refreshProfiles();
   const pointer = await store.get<{ id: string; value: string }>("kv", ACTIVE_CAL_KEY);
   if (pointer) activeCal.value = (await store.get<SavedCalibration>("calibrations", pointer.value)) ?? null;
   setInterval(() => (clock.value = Date.now()), 60_000);

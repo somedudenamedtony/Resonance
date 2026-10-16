@@ -30,9 +30,9 @@ export function Home() {
           <strong>Test coax</strong>
           <span>Length and faults</span>
         </button>
-        <button class="job" onClick={() => go({ name: "soon", job: "History", milestone: "M5" })}>
-          <strong>History</strong>
-          <span>Saved sweeps</span>
+        <button class="job" onClick={() => go({ name: "antennas" })}>
+          <strong>Antennas</strong>
+          <span>History and changes</span>
         </button>
       </div>
       {last && (

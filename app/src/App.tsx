@@ -1,4 +1,5 @@
 import { StatusBar } from "./components/StatusBar";
+import { Antennas, Profile } from "./screens/Antennas";
 import { Calibrate } from "./screens/Calibrate";
 import { Check } from "./screens/Check";
 import { Connect } from "./screens/Connect";
@@ -8,7 +9,8 @@ import { go, route } from "./state";
 
 export function App() {
   const r = route.value;
-  const tab = r.name === "soon" && (r.job === "Antennas" || r.job === "Settings") ? r.job : "Home";
+  const tab =
+    r.name === "antennas" || r.name === "profile" ? "Antennas" : r.name === "settings" ? "Settings" : "Home";
 
   return (
     <>
@@ -19,6 +21,9 @@ export function App() {
         {r.name === "connect" && <Connect />}
         {r.name === "calibrate" && <Calibrate />}
         {r.name === "tune" && <Tune />}
+        {r.name === "antennas" && <Antennas />}
+        {r.name === "profile" && <Profile id={r.id} />}
+        {r.name === "settings" && <Soon job="Settings" milestone="M5" />}
         {r.name === "soon" && <Soon job={r.job} milestone={r.milestone} />}
       </main>
       <nav class="tabbar" aria-label="Main">
@@ -29,14 +34,14 @@ export function App() {
           <button
             class="tab"
             aria-current={tab === "Antennas" ? "page" : undefined}
-            onClick={() => go({ name: "soon", job: "Antennas", milestone: "M5" })}
+            onClick={() => go({ name: "antennas" })}
           >
             Antennas
           </button>
           <button
             class="tab"
             aria-current={tab === "Settings" ? "page" : undefined}
-            onClick={() => go({ name: "soon", job: "Settings", milestone: "M5" })}
+            onClick={() => go({ name: "settings" })}
           >
             Settings
           </button>
