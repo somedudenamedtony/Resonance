@@ -4,14 +4,17 @@
   "description": "Resonance: makes the NanoVNA understandable. ESP32-S3 Wi-Fi bridge + phone web app.",
   "workspaces": [
     "analysis",
-    "app"
+    "app",
+    "emulator"
   ],
   "scripts": {
     "dev": "npm run dev -w @resonance/app",
     "build": "npm run build -w @resonance/app",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check": "npm run typecheck && npm run test && npm run build"
+    "check": "npm run typecheck && npm run test && npm run build",
+    "emulate": "npm run start -w @resonance/emulator --",
+    "test:c": "node emulator/scripts/build-host.mjs && ctest --test-dir firmware/build-host --output-on-failure"
   },
   "engines": {
     "node": ">=20"

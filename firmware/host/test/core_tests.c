@@ -510,6 +510,9 @@ static void test_bridge_timeout_then_recovers(void)
     cJSON *e = h_last(h, "error");
     CHECK(e && strcmp(str(e, "code"), "timeout") == 0 && num(e, "id") == 30);
     cJSON_Delete(e);
+    cJSON *d = h_last(h, "device");
+    CHECK(d && cJSON_IsFalse(cJSON_GetObjectItem(d, "connected")));  // not usable while resyncing
+    cJSON_Delete(d);
     h->dev.silent = false;
     h_run(h, 3000);  // re-probe succeeds
     CHECK(h->b->dev == RC_DEV_READY);

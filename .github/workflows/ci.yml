@@ -7,7 +7,7 @@ on:
 
 jobs:
   web:
-    name: Analysis + app
+    name: Analysis, app, bridge core and emulator
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,11 +17,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - name: Bridge core C tests (ASan + UBSan)
+        run: npm run test:c
+      - name: Unit and end-to-end tests (app ↔ C bridge ↔ emulated NanoVNA)
+        run: npm test
       - run: npm run build
       - name: Report bundle size
         run: |
           echo "Gzipped app bundle:"
           find app/dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' \) -exec gzip -c {} \; | wc -c
-
-  # Firmware builds join CI in M1, once the USB host spike compiles on hardware.

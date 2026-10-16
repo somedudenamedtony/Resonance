@@ -109,9 +109,13 @@ void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint1
 
 // ---------- device lifecycle ----------
 
+static void send_device(rc_bridge_t *b);
+
 static void start_probe(rc_bridge_t *b, uint32_t delay_ms)
 {
+    bool was_ready = b->dev == RC_DEV_READY;
     b->dev = RC_DEV_PROBING;
+    if (was_ready) send_device(b);  // tell the app the device isn't usable while we resync
     b->probe_step = PROBE_SYNC;
     b->job = RC_JOB_PROBE;
     b->job_waiting = true;

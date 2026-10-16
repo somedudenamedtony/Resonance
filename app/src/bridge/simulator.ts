@@ -1,4 +1,12 @@
-import { distort, type ErrorTerms, IDENTITY_TERMS, type RlcAntenna, rlcGamma, seededRandom } from "@resonance/analysis";
+import {
+  ANTENNA_PRESETS,
+  type AntennaPreset,
+  distort,
+  type ErrorTerms,
+  IDENTITY_TERMS,
+  rlcGamma,
+  seededRandom,
+} from "@resonance/analysis";
 import {
   type ClientMessage,
   encodeScanFrame,
@@ -9,20 +17,8 @@ import {
 } from "./protocol";
 import type { Transport } from "./transport";
 
-export interface SimAntennaPreset {
-  id: string;
-  name: string;
-  antenna: RlcAntenna;
-}
-
-/** Antennas the simulator can pretend to be measuring. */
-export const SIM_ANTENNAS: readonly SimAntennaPreset[] = [
-  { id: "good20", name: "20m dipole, well tuned", antenna: { f0Hz: 14.175e6, r: 52, q: 6 } },
-  { id: "long20", name: "20m dipole, too long", antenna: { f0Hz: 13.82e6, r: 60, q: 7 } },
-  { id: "short40", name: "40m dipole, too short", antenna: { f0Hz: 7.42e6, r: 58, q: 6 } },
-  { id: "mismatch20", name: "20m vertical, poor match", antenna: { f0Hz: 14.2e6, r: 16, q: 5 } },
-  { id: "efhw40", name: "40m EFHW, usable", antenna: { f0Hz: 7.12e6, r: 50, q: 12 } },
-];
+/** Antennas the simulator can pretend to be measuring (shared with the emulator). */
+export const SIM_ANTENNAS: readonly AntennaPreset[] = ANTENNA_PRESETS;
 
 export interface SimulatorOptions {
   /** Preset id from SIM_ANTENNAS. */
