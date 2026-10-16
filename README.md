@@ -39,9 +39,9 @@ Exit: app runs in a desktop browser against the simulator and plots a fake SWR c
 - [x] `analysis`: complex math, SWR/Z/RL, OSL calibration, standard check, metrics, band plan
 - [x] `analysis`: verdict rules, trim coach, coax length, unit tests
 - [ ] `app`: protocol types, simulated bridge, Home + Check flow with SWR plot
-- [ ] `firmware`: PlatformIO skeleton (builds in M1)
-- [ ] `docs`: SPEC.md, PROTOCOL.md
-- [ ] CI: typecheck, test, build on push
+- [x] `firmware`: PlatformIO skeleton (builds in M1)
+- [x] `docs`: SPEC.md, PROTOCOL.md
+- [x] CI: typecheck, test, build on push (build step needs `app`)
 
 ### Hardware
 
