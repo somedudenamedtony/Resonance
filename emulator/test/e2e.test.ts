@@ -44,6 +44,10 @@ async function setup(opts: EmulatedBridgeOptions = {}) {
   return { bridge, client };
 }
 
+import { mkdtempSync, readFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 afterEach(async () => {
   client?.stop();
   client = null;
@@ -204,5 +208,29 @@ describe("app calibration flow over the C bridge", () => {
     expect(check.calibrated).toBe(true);
     expect(check.result.level).toBe("good");
     expect(Math.abs(check.result.metrics.resonanceHz! - good20.f0Hz) / good20.f0Hz).toBeLessThan(0.001);
+  });
+
+  it("uploads a firmware image through the C bridge, byte for byte", async () => {
+    const otaDir = mkdtempSync(join(tmpdir(), "resonance-ota-"));
+    const { client, bridge } = await setup({ otaDir });
+    const img = new Uint8Array(50_000).map((_, i) => (i * 131 + 7) & 0xff);
+    img[0] = 0xe9;
+    let last = 0;
+    await client.update("firmware", img, (sent) => (last = sent));
+    expect(last).toBe(img.length);
+    await bridge.waitForLog(/ota\.end ok/, 2000);
+    expect(new Uint8Array(readFileSync(join(otaDir, "firmware.bin")))).toEqual(img);
+  });
+
+  it("rejects a non-LittleFS file as the web app and keeps nothing", async () => {
+    const otaDir = mkdtempSync(join(tmpdir(), "resonance-ota-"));
+    const { client } = await setup({ otaDir });
+    const img = new Uint8Array(9000).fill(0x41);
+    await expect(client.update("app", img)).rejects.toMatchObject({ code: "bad_request" });
+    expect(existsSync(join(otaDir, "app.bin"))).toBe(false);
+    expect(existsSync(join(otaDir, "app.bin.part"))).toBe(false);
+    // The bridge still scans afterwards.
+    const sweep = await client.scan({ startHz: 14e6, stopHz: 14.35e6, points: 51 });
+    expect(sweep.freqHz).toHaveLength(51);
   });
 });

@@ -8,6 +8,7 @@ export interface Transport {
   connect(): void;
   close(): void;
   send(msg: ClientMessage): void;
+  sendBinary(buf: ArrayBuffer): void;
   onOpen?: () => void;
   onClose?: () => void;
   onText?: (text: string) => void;
@@ -52,5 +53,10 @@ export class WebSocketTransport implements Transport {
   send(msg: ClientMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error("bridge is not connected");
     this.ws.send(JSON.stringify(msg));
+  }
+
+  sendBinary(buf: ArrayBuffer): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error("bridge is not connected");
+    this.ws.send(buf);
   }
 }

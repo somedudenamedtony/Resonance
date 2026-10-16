@@ -16,7 +16,10 @@ import {
 } from "@resonance/analysis";
 import {
   type ClientMessage,
+  decodeOtaFrame,
+  detectUpdateTarget,
   encodeCaptureFrame,
+  type UpdateTarget,
   encodeScanFrame,
   PROTOCOL_VERSION,
   recordsPerFrame,
@@ -75,6 +78,9 @@ export class SimulatedTransport implements Transport {
   private activeScan: number | null = null;
   private rand = seededRandom(7);
   private lastS11: Complex[] = [];
+  private ota: { target: UpdateTarget; size: number; received: number; bytes: Uint8Array } | null = null;
+  /** The last image the simulated bridge accepted (for tests and the demo). */
+  lastUpdate: { target: UpdateTarget; bytes: Uint8Array } | null = null;
 
   constructor(public options: SimulatorOptions = { ...DEFAULT_SIM_OPTIONS }) {}
 
@@ -145,9 +151,37 @@ export class SimulatedTransport implements Transport {
         break;
       }
       case "wifi.set":
-      case "ota.begin":
         this.later(20, () => this.emit({ v: 1, type: "ok", for: msg.type }));
         break;
+      case "ota.begin":
+        this.ota = { target: msg.target, size: msg.size, received: 0, bytes: new Uint8Array(msg.size) };
+        this.later(20, () => this.emit({ v: 1, type: "ok", for: msg.type }));
+        break;
+    }
+  }
+
+  sendBinary(buf: ArrayBuffer): void {
+    if (!this.open) throw new Error("bridge is not connected");
+    const fail = (message: string) => {
+      this.ota = null;
+      this.emit({ v: 1, type: "error", code: "bad_request", message });
+    };
+    const o = this.ota;
+    if (!o) return fail("No update in progress. Send ota.begin first.");
+    const { offset, data } = decodeOtaFrame(buf);
+    if (offset !== o.received) return fail("Update data arrived out of order. Nothing was changed.");
+    if (offset + data.length > o.size) return fail("The update is larger than announced.");
+    if (offset === 0 && detectUpdateTarget(data) !== o.target) {
+      return fail(o.target === "firmware" ? "That isn't an ESP32 firmware image (resonance-bridge.bin)." : "That isn't a LittleFS web app image (littlefs.bin).");
+    }
+    o.bytes.set(data, offset);
+    o.received += data.length;
+    const received = o.received;
+    this.later(2, () => this.emit({ v: 1, type: "ota.ack", received }));
+    if (received === o.size) {
+      this.lastUpdate = { target: o.target, bytes: o.bytes };
+      this.ota = null;
+      this.later(5, () => this.emit({ v: 1, type: "ok", for: "ota.end" }));
     }
   }
 

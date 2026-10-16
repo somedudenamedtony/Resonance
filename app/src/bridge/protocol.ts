@@ -33,6 +33,7 @@ export type ServerMessage =
   | { v: 1; type: "raw.reply"; command: string; text: string }
   | { v: 1; type: "capture.begin"; width: number; height: number; format: "rgb565be" }
   | { v: 1; type: "capture.end"; bytes: number }
+  | { v: 1; type: "ota.ack"; received: number }
   | { v: 1; type: "ok"; for: string }
   | { v: 1; type: "error"; code: ErrorCode; message: string; id?: number };
 
@@ -157,4 +158,31 @@ export function rgb565beToRgba(src: Uint8Array, width: number, height: number): 
     out[i * 4 + 3] = 255;
   }
   return out;
+}
+
+// ---- Updates over Wi-Fi ----
+export type UpdateTarget = "firmware" | "app";
+export const OTA_CHUNK_BYTES = MAX_FRAME_BYTES - HEADER_BYTES;
+
+/** Update chunk: u8 kind 0x02, u8 0, u16 0, u32 byte offset, then image bytes. */
+export function encodeOtaFrame(offset: number, data: Uint8Array): ArrayBuffer {
+  const buf = new ArrayBuffer(HEADER_BYTES + data.length);
+  const dv = new DataView(buf);
+  dv.setUint8(0, FRAME_OTA);
+  dv.setUint32(4, offset, true);
+  new Uint8Array(buf, HEADER_BYTES).set(data);
+  return buf;
+}
+
+export function decodeOtaFrame(buf: ArrayBuffer): { offset: number; data: Uint8Array } {
+  const dv = new DataView(buf);
+  if (buf.byteLength < HEADER_BYTES || dv.getUint8(0) !== FRAME_OTA) throw new Error("not an update frame");
+  return { offset: dv.getUint32(4, true), data: new Uint8Array(buf, HEADER_BYTES) };
+}
+
+/** Which target a file looks like, by its first bytes (same check the bridge makes). */
+export function detectUpdateTarget(bytes: Uint8Array): UpdateTarget | null {
+  if (bytes.length >= 1 && bytes[0] === 0xe9) return "firmware";
+  if (bytes.length >= 16 && new TextDecoder().decode(bytes.subarray(8, 16)) === "littlefs") return "app";
+  return null;
 }

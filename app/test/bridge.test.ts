@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { checkBand, findBand, scanRangeFor, US_BAND_PLAN } from "@resonance/analysis";
 import { BridgeClient } from "../src/bridge/client";
-import { decodeScanFrame, encodeScanFrame, recordsPerFrame } from "../src/bridge/protocol";
+import {
+  decodeOtaFrame,
+  decodeScanFrame,
+  detectUpdateTarget,
+  encodeOtaFrame,
+  encodeScanFrame,
+  recordsPerFrame,
+} from "../src/bridge/protocol";
 import { SimulatedTransport } from "../src/bridge/simulator";
 
 describe("binary scan frames", () => {
@@ -32,6 +39,20 @@ describe("binary scan frames", () => {
   it("rejects a truncated frame", () => {
     const buf = encodeScanFrame({ scanId: 1, offset: 0, hasS21: false, points: [{ freqHz: 1, s11re: 0, s11im: 0 }] });
     expect(() => decodeScanFrame(buf.slice(0, 20))).toThrow();
+  });
+});
+
+describe("update frames", () => {
+  it("round-trip and detect image types", () => {
+    const data = new Uint8Array([1, 2, 3]);
+    const f = decodeOtaFrame(encodeOtaFrame(70_000, data));
+    expect(f.offset).toBe(70_000);
+    expect([...f.data]).toEqual([1, 2, 3]);
+    const lfs = new Uint8Array(32);
+    lfs.set(new TextEncoder().encode("littlefs"), 8);
+    expect(detectUpdateTarget(lfs)).toBe("app");
+    expect(detectUpdateTarget(new Uint8Array([0xe9, 0]))).toBe("firmware");
+    expect(detectUpdateTarget(new Uint8Array([0x7f, 0x45]))).toBeNull();
   });
 });
 
@@ -73,6 +94,26 @@ describe("bridge client against the simulator", () => {
     const cap = await client.capture();
     expect(cap).toMatchObject({ width: 480, height: 320, format: "rgb565be" });
     expect(cap.data.length).toBe(480 * 320 * 2);
+    client.stop();
+  });
+
+  it("uploads a firmware image in acked chunks", async () => {
+    const { sim, client } = await connected();
+    const img = new Uint8Array(10_000).map((_, i) => (i * 31) & 0xff);
+    img[0] = 0xe9;
+    const seen: number[] = [];
+    await client.update("firmware", img, (sent) => seen.push(sent));
+    expect(seen).toEqual([4088, 8176, 10_000]);
+    expect(sim.lastUpdate?.target).toBe("firmware");
+    expect(sim.lastUpdate?.bytes).toEqual(img);
+    client.stop();
+  });
+
+  it("refuses the wrong file for the target", async () => {
+    const { client } = await connected();
+    const img = new Uint8Array(100);
+    img[0] = 0xe9;
+    await expect(client.update("app", img)).rejects.toMatchObject({ message: expect.stringContaining("littlefs.bin") });
     client.stop();
   });
 

@@ -25,6 +25,8 @@ export interface EmulatedBridgeOptions {
   port?: number;
   host?: string;
   binaryPath?: string;
+  /** Where the host writes received updates (<target>.bin). Discarded when unset. */
+  otaDir?: string;
   nanovna?: Partial<NanoVnaOptions>;
   /** Plug the emulated NanoVNA in at start. Default true. */
   attached?: boolean;
@@ -94,7 +96,11 @@ export class EmulatedBridge {
     }
     const child = spawn(bin, [], {
       stdio: ["pipe", "pipe", "inherit", "pipe"],
-      env: { ...process.env, ASAN_OPTIONS: "detect_leaks=0" },
+      env: {
+        ...process.env,
+        ASAN_OPTIONS: "detect_leaks=0",
+        ...(this.opts.otaDir ? { RESONANCE_OTA_DIR: this.opts.otaDir } : {}),
+      },
     });
     this.child = child;
     this.exited = new Promise((r) => child.once("exit", () => r()));
@@ -150,8 +156,8 @@ export class EmulatedBridge {
     this.wss.on("connection", (ws) => {
       this.control("client");
       ws.on("message", (data, isBinary) => {
-        if (isBinary) return; // OTA chunks not supported on the host
-        this.send(K_TEXT, Buffer.from(data.toString(), "utf8"));
+        if (isBinary) this.send(K_BINARY, data as Buffer);
+        else this.send(K_TEXT, Buffer.from(data.toString(), "utf8"));
       });
     });
 

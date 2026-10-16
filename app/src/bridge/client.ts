@@ -2,6 +2,9 @@ import { c, type Complex, type Sweep } from "@resonance/analysis";
 import {
   decodeCaptureFrame,
   decodeScanFrame,
+  encodeOtaFrame,
+  OTA_CHUNK_BYTES,
+  type UpdateTarget,
   FRAME_CAPTURE,
   frameKind,
   type DeviceStatus,
@@ -77,6 +80,14 @@ export class BridgeClient {
     reject: (e: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   } | null = null;
+  private updating: {
+    data: Uint8Array;
+    sent: number;
+    onProgress?: (sent: number, total: number) => void;
+    resolve: () => void;
+    reject: (e: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
@@ -90,6 +101,7 @@ export class BridgeClient {
       this.link = "closed";
       this.device = null;
       this.failPending(new BridgeError("disconnected", "Lost the connection to the bridge."));
+      this.failUpdate(new BridgeError("disconnected", "Lost the connection during the update."));
       this.changed();
       this.scheduleReconnect();
     };
@@ -167,6 +179,52 @@ export class BridgeClient {
     c.reject(err);
   }
 
+  /**
+   * Send a firmware or web-app image. One chunk in flight at a time: each waits for `ota.ack`.
+   * Resolves once the bridge has verified it (it then reboots).
+   */
+  update(target: UpdateTarget, data: Uint8Array, onProgress?: (sent: number, total: number) => void): Promise<void> {
+    if (this.link !== "open") return Promise.reject(new BridgeError("disconnected", "The bridge isn't connected."));
+    if (this.updating) return Promise.reject(new BridgeError("busy", "An update is already running."));
+    if (this.pending || this.capturing) return Promise.reject(new BridgeError("busy", "Wait for the scan to finish."));
+    return new Promise<void>((resolve, reject) => {
+      this.updating = { data, sent: 0, onProgress, resolve, reject, timer: setTimeout(() => {}, 0) };
+      this.armUpdateTimer();
+      try {
+        this.transport.send({ v: PROTOCOL_VERSION, type: "ota.begin", target, size: data.length });
+      } catch (e) {
+        this.failUpdate(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  }
+
+  private armUpdateTimer(): void {
+    const u = this.updating;
+    if (!u) return;
+    clearTimeout(u.timer);
+    u.timer = setTimeout(() => this.failUpdate(new BridgeError("timeout", "The bridge stopped answering.")), 20_000);
+  }
+
+  private sendNextChunk(): void {
+    const u = this.updating;
+    if (!u) return;
+    const n = Math.min(OTA_CHUNK_BYTES, u.data.length - u.sent);
+    this.armUpdateTimer();
+    try {
+      this.transport.sendBinary(encodeOtaFrame(u.sent, u.data.subarray(u.sent, u.sent + n)));
+    } catch (e) {
+      this.failUpdate(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
+  private failUpdate(err: Error): void {
+    const u = this.updating;
+    if (!u) return;
+    clearTimeout(u.timer);
+    this.updating = null;
+    u.reject(err);
+  }
+
   /** Ask the bridge to join home Wi-Fi (sta) or stay hotspot-only (ap). It restarts after "ok". */
   setWifi(mode: "ap" | "sta", ssid?: string, password?: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -234,7 +292,20 @@ export class BridgeClient {
         c.resolve({ width: c.width, height: c.height, format: "rgb565be", data: c.data });
         break;
       }
+      case "ota.ack": {
+        const u = this.updating;
+        if (!u) break;
+        u.sent = msg.received;
+        u.onProgress?.(u.sent, u.data.length);
+        if (u.sent < u.data.length) this.sendNextChunk();
+        else this.armUpdateTimer();
+        break;
+      }
       case "error": {
+        if (msg.id === undefined && this.updating) {
+          this.failUpdate(new BridgeError(msg.code, msg.message));
+          break;
+        }
         if (msg.id === undefined && this.capturing) {
           this.failCapture(new BridgeError(msg.code, msg.message));
           break;
@@ -251,6 +322,17 @@ export class BridgeClient {
         this.rawWaiters.shift()?.(msg.text);
         break;
       case "ok": {
+        const u = this.updating;
+        if (u && msg.for === "ota.begin") {
+          this.sendNextChunk();
+          break;
+        }
+        if (u && msg.for === "ota.end") {
+          clearTimeout(u.timer);
+          this.updating = null;
+          u.resolve();
+          break;
+        }
         const i = this.okWaiters.findIndex((w) => w.for === msg.for);
         if (i >= 0) this.okWaiters.splice(i, 1)[0]!.resolve();
         break;
