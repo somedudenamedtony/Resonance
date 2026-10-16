@@ -11,6 +11,8 @@
  * The "classic" dialect stands in for older firmware: 101 points, no binary output.
  */
 import {
+  coaxGamma,
+  type CoaxModel,
   type Complex,
   distort,
   type ErrorTerms,
@@ -28,7 +30,8 @@ export type Port1 =
   | { kind: "antenna"; antenna: RlcAntenna }
   | { kind: "open" }
   | { kind: "short" }
-  | { kind: "load" };
+  | { kind: "load" }
+  | { kind: "coax"; model: CoaxModel };
 
 export interface NanoVnaOptions {
   dialect: Dialect;
@@ -234,6 +237,8 @@ export class NanoVnaEmulator {
         return { re: -1, im: 0 };
       case "load":
         return { re: 0, im: 0 };
+      case "coax":
+        return coaxGamma(p.model, fHz);
     }
   }
 

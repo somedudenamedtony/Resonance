@@ -5,6 +5,8 @@ import {
   type ErrorTerms,
   IDENTITY_TERMS,
   type AntennaType,
+  coaxGamma,
+  type CoaxModel,
   estimateElementLengthM,
   type RlcAntenna,
   rlcGamma,
@@ -38,6 +40,8 @@ export interface SimulatorOptions {
   standard: "open" | "short" | "load" | null;
   /** Use this antenna instead of the preset (set by trim()). */
   antenna: RlcAntenna | null;
+  /** A coax cable on port 1 (for the coax test) instead of the antenna. */
+  coax: CoaxModel | null;
 }
 
 export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
@@ -48,6 +52,7 @@ export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
   deviceConnected: true,
   standard: null,
   antenna: null,
+  coax: null,
 };
 
 /**
@@ -177,7 +182,7 @@ export class SimulatedTransport implements Transport {
     for (let i = 0; i < points; i++) {
       const f = startHz + i * step;
       const std = this.options.standard;
-      const actual = std === "open" ? { re: 1, im: 0 } : std === "short" ? { re: -1, im: 0 } : std === "load" ? { re: 0, im: 0 } : rlcGamma(antenna, f);
+      const actual = std === "open" ? { re: 1, im: 0 } : std === "short" ? { re: -1, im: 0 } : std === "load" ? { re: 0, im: 0 } : this.options.coax ? coaxGamma(this.options.coax, f) : rlcGamma(antenna, f);
       const g = distort(actual, this.options.errorTerms(f));
       const n = this.options.noise;
       all.push({ freqHz: f, s11re: g.re + this.gauss() * n, s11im: g.im + this.gauss() * n });

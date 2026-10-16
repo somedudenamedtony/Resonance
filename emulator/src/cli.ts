@@ -9,11 +9,20 @@
  * Then open the printed URL (serves app/dist), or run `npm run dev` and open
  * http://localhost:5173/?bridge=ws://127.0.0.1:8080/ws
  *
- * Type commands at the prompt: attach, detach, antenna <id>, port open|short|load|antenna, quit.
+ * Type commands at the prompt: attach, detach, antenna <id>, port open|short|load|antenna,
+ * port coax (18.3 m RG-8X, open end, fault at 12.2 m), port coax-antenna, quit.
  */
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
-import { ANTENNA_PRESETS, findPreset, IDENTITY_TERMS, typicalNanoVnaErrorTerms } from "@resonance/analysis";
+import {
+  ANTENNA_PRESETS,
+  findCoaxType,
+  findPreset,
+  IDENTITY_TERMS,
+  OPEN_END,
+  rlcGamma,
+  typicalNanoVnaErrorTerms,
+} from "@resonance/analysis";
 import { EmulatedBridge, REPO_ROOT } from "./bridgeHost";
 import type { Dialect } from "./nanovna";
 
@@ -50,7 +59,7 @@ console.log(`\nEmulated Resonance bridge (${dialect}, ${preset.name}${raw ? ", r
 console.log(`  App:       ${bridge.origin}/?bridge=${bridge.url}`);
 console.log(`  WebSocket: ${bridge.url}`);
 console.log(`  Dev app:   http://localhost:5173/?bridge=${bridge.url}\n`);
-console.log("Commands: attach | detach | antenna <id> | port open|short|load|antenna | quit\n");
+console.log("Commands: attach | detach | antenna <id> | port open|short|load|antenna|coax|coax-antenna | quit\n");
 
 let current = preset.antenna;
 const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: "emu> " });
@@ -76,6 +85,19 @@ rl.on("line", async (line) => {
     }
     case "port":
       if (a === "open" || a === "short" || a === "load") bridge.nanovna.options.port1 = { kind: a };
+      else if (a === "coax" || a === "coax-antenna") {
+        const rg8x = findCoaxType("rg8x")!;
+        bridge.nanovna.options.port1 = {
+          kind: "coax",
+          model: {
+            lengthM: 18.3,
+            velocityFactor: rg8x.velocityFactor,
+            lossDbPer100mAt10MHz: rg8x.lossDbPer100mAt10MHz,
+            end: a === "coax" ? OPEN_END : (f) => rlcGamma(current, f),
+            faults: [{ atM: 12.2, gamma: 0.12 }],
+          },
+        };
+      }
       else bridge.nanovna.options.port1 = { kind: "antenna", antenna: current };
       console.log(`port 1: ${a ?? "antenna"}`);
       break;

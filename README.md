@@ -107,7 +107,14 @@ calibration math validated end to end against emulated raw data.
       Sunlight, calibration info, bridge home Wi-Fi (`wifi.set`), storage used, backup,
       restore, clear data, versions
 
-### Next: M6 — coax and advanced
+### M6 — coax and advanced (in progress)
+
+- [x] Coax analysis: TDR, length (TDR + quarter wave), loss, faults; Touchstone/CSV export
+- [x] Test coax screen: cable type, far end open/antenna, length, loss vs typical, faults,
+      reflection-vs-distance plot; simulator and emulator (`port coax`) have a pretend cable
+- [ ] Advanced view: Smith chart with zones, R/X and return loss, markers, export
+- [ ] Device screenshot (`capture`) through the bridge
+- [ ] Updates over Wi-Fi (firmware and app image)
 
 ### Trying the app
 

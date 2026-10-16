@@ -2,6 +2,7 @@ import { StatusBar } from "./components/StatusBar";
 import { Antennas, Profile } from "./screens/Antennas";
 import { Calibrate } from "./screens/Calibrate";
 import { Check } from "./screens/Check";
+import { Coax } from "./screens/Coax";
 import { Connect } from "./screens/Connect";
 import { Home } from "./screens/Home";
 import { Settings } from "./screens/Settings";
@@ -25,6 +26,7 @@ export function App() {
         {r.name === "antennas" && <Antennas />}
         {r.name === "profile" && <Profile id={r.id} />}
         {r.name === "settings" && <Settings />}
+        {r.name === "coax" && <Coax />}
         {r.name === "soon" && <Soon job={r.job} milestone={r.milestone} />}
       </main>
       <nav class="tabbar" aria-label="Main">

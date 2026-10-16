@@ -26,7 +26,7 @@ export function Home() {
           <strong>Calibrate</strong>
           <span>Open, short, load</span>
         </button>
-        <button class="job" onClick={() => go({ name: "soon", job: "Test my coax", milestone: "M6" })}>
+        <button class="job" onClick={() => go({ name: "coax" })}>
           <strong>Test coax</strong>
           <span>Length and faults</span>
         </button>
