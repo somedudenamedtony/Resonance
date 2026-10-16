@@ -4,6 +4,9 @@ import {
   distort,
   type ErrorTerms,
   IDENTITY_TERMS,
+  type AntennaType,
+  estimateElementLengthM,
+  type RlcAntenna,
   rlcGamma,
   seededRandom,
 } from "@resonance/analysis";
@@ -33,6 +36,8 @@ export interface SimulatorOptions {
   deviceConnected: boolean;
   /** A calibration standard on port 1 instead of the antenna. */
   standard: "open" | "short" | "load" | null;
+  /** Use this antenna instead of the preset (set by trim()). */
+  antenna: RlcAntenna | null;
 }
 
 export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
@@ -42,6 +47,7 @@ export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
   msPer100Points: 180,
   deviceConnected: true,
   standard: null,
+  antenna: null,
 };
 
 /**
@@ -79,6 +85,21 @@ export class SimulatedTransport implements Transport {
   configure(patch: Partial<SimulatorOptions>): void {
     this.options = { ...this.options, ...patch };
     if (this.open) this.emit(this.deviceMessage());
+  }
+
+  /** The antenna currently on port 1. */
+  get antenna(): RlcAntenna {
+    return this.options.antenna ?? (SIM_ANTENNAS.find((a) => a.id === this.options.antennaId) ?? SIM_ANTENNAS[0]!).antenna;
+  }
+
+  /**
+   * Physically trim the simulated antenna by `deltaM` meters per element (negative adds wire).
+   * Resonance scales as 1/length, using the element length implied by the current resonance.
+   */
+  trim(deltaM: number, type: AntennaType): void {
+    const a = this.antenna;
+    const lengthM = estimateElementLengthM(type, a.f0Hz);
+    this.configure({ antenna: { ...a, f0Hz: (a.f0Hz * lengthM) / (lengthM - deltaM) } });
   }
 
   send(msg: ClientMessage): void {
@@ -150,13 +171,13 @@ export class SimulatedTransport implements Transport {
       return;
     }
 
-    const preset = SIM_ANTENNAS.find((a) => a.id === this.options.antennaId) ?? SIM_ANTENNAS[0]!;
+    const antenna = this.antenna;
     const all: ScanPoint[] = [];
     const step = (stopHz - startHz) / (points - 1);
     for (let i = 0; i < points; i++) {
       const f = startHz + i * step;
       const std = this.options.standard;
-      const actual = std === "open" ? { re: 1, im: 0 } : std === "short" ? { re: -1, im: 0 } : std === "load" ? { re: 0, im: 0 } : rlcGamma(preset.antenna, f);
+      const actual = std === "open" ? { re: 1, im: 0 } : std === "short" ? { re: -1, im: 0 } : std === "load" ? { re: 0, im: 0 } : rlcGamma(antenna, f);
       const g = distort(actual, this.options.errorTerms(f));
       const n = this.options.noise;
       all.push({ freqHz: f, s11re: g.re + this.gauss() * n, s11im: g.im + this.gauss() * n });

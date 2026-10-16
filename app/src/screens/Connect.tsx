@@ -66,7 +66,7 @@ export function Connect() {
             onChange={(e) => {
               const id = (e.target as HTMLSelectElement).value;
               setAntennaId(id);
-              sim.configure({ antennaId: id });
+              sim.configure({ antennaId: id, antenna: null });
             }}
           >
             {SIM_ANTENNAS.map((a) => (
