@@ -36,8 +36,8 @@ Milestones are defined in the spec. Work in progress is tracked here so any cont
 Exit: app runs in a desktop browser against the simulator and plots a fake SWR curve.
 
 - [x] Monorepo scaffold (npm workspaces: `analysis`, `app`)
-- [ ] `analysis`: complex math, SWR/Z/RL, OSL calibration, standard check, metrics, band plan
-- [ ] `analysis`: verdict rules, trim coach, coax length, unit tests
+- [x] `analysis`: complex math, SWR/Z/RL, OSL calibration, standard check, metrics, band plan
+- [x] `analysis`: verdict rules, trim coach, coax length, unit tests
 - [ ] `app`: protocol types, simulated bridge, Home + Check flow with SWR plot
 - [ ] `firmware`: PlatformIO skeleton (builds in M1)
 - [ ] `docs`: SPEC.md, PROTOCOL.md
