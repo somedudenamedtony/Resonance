@@ -14,6 +14,7 @@ void bridge_post_attached(void);
 void bridge_post_detached(void);
 void bridge_post_client_connected(void);
 void bridge_post_client_text(const char *json, size_t len);
+void bridge_post_client_binary(const uint8_t *data, size_t len);
 
 // Read-only snapshot for the status LED.
 rc_dev_state_t bridge_device_state(void);

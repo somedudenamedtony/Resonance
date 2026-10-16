@@ -9,13 +9,14 @@
 #include "freertos/queue.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/task.h"
+#include "ota.h"
 #include "usb_link.h"
 #include "web.h"
 #include "wifi.h"
 
 static const char *TAG = "bridge";
 
-typedef enum { EV_ATTACH, EV_DETACH, EV_CLIENT, EV_TEXT } ev_type_t;
+typedef enum { EV_ATTACH, EV_DETACH, EV_CLIENT, EV_TEXT, EV_BINARY } ev_type_t;
 
 typedef struct {
     ev_type_t type;
@@ -88,6 +89,7 @@ void bridge_post_attached(void) { post(EV_ATTACH, NULL, 0); }
 void bridge_post_detached(void) { post(EV_DETACH, NULL, 0); }
 void bridge_post_client_connected(void) { post(EV_CLIENT, NULL, 0); }
 void bridge_post_client_text(const char *json, size_t len) { post(EV_TEXT, json, len); }
+void bridge_post_client_binary(const uint8_t *data, size_t len) { post(EV_BINARY, (const char *)data, len); }
 
 rc_dev_state_t bridge_device_state(void) { return s_dev_state; }
 bool bridge_is_scanning(void) { return s_scanning; }
@@ -96,7 +98,17 @@ bool bridge_is_scanning(void) { return s_scanning; }
 
 static void bridge_task(void *arg)
 {
-    rc_bridge_io_t io = {io_serial_write, io_send_text, io_send_binary, io_wifi_set, io_log, NULL};
+    rc_bridge_io_t io = {
+        .serial_write = io_serial_write,
+        .send_text = io_send_text,
+        .send_binary = io_send_binary,
+        .wifi_set = io_wifi_set,
+        .log = io_log,
+        .ota_begin = ota_begin,
+        .ota_write = ota_write,
+        .ota_end = ota_end,
+        .ota_abort = ota_abort,
+    };
     rc_bridge_init(&s_bridge, &io, now_ms());
     ESP_LOGI(TAG, "bridge core %s running", RC_BRIDGE_VERSION);
 
@@ -118,6 +130,9 @@ static void bridge_task(void *arg)
                 break;
             case EV_TEXT:
                 rc_bridge_client_text(&s_bridge, ev.text, ev.len, now);
+                break;
+            case EV_BINARY:
+                rc_bridge_client_binary(&s_bridge, (const uint8_t *)ev.text, ev.len, now);
                 break;
             }
             free(ev.text);

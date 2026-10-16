@@ -106,9 +106,51 @@ static esp_err_t ws_handler(httpd_req_t *req)
     if (err == ESP_OK && pkt.type == HTTPD_WS_TYPE_TEXT) {
         buf[pkt.len] = 0;
         bridge_post_client_text((const char *)buf, pkt.len);
+    } else if (err == ESP_OK && pkt.type == HTTPD_WS_TYPE_BINARY) {
+        bridge_post_client_binary(buf, pkt.len);
     }
     free(buf);
     return err;
+}
+
+// ---- built-in update page ----
+// Lives in firmware, not on LittleFS, so a broken web app image can always be replaced.
+static const char UPDATE_PAGE[] =
+    "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>Resonance update</title><style>body{font:16px system-ui;margin:24px;max-width:480px;background:#111;color:#eee}"
+    "button,select,input{font:inherit;margin:6px 0;display:block}progress{width:100%}</style>"
+    "<h2>Resonance bridge update</h2>"
+    "<p>Pick <b>littlefs.bin</b> (web app) or <b>resonance-bridge.bin</b> (firmware).</p>"
+    "<select id=t><option value=app>Web app (littlefs.bin)</option><option value=firmware>Firmware</option></select>"
+    "<input type=file id=f><button id=go>Upload</button><progress id=p value=0 max=1></progress><p id=s></p>"
+    "<script>"
+    "const $=i=>document.getElementById(i);"
+    "$('go').onclick=async()=>{const file=$('f').files[0];if(!file)return;"
+    "const data=new Uint8Array(await file.arrayBuffer());const ws=new WebSocket('ws://'+location.host+'/ws');"
+    "ws.binaryType='arraybuffer';let off=0;"
+    "const next=()=>{const n=Math.min(4088,data.length-off);const b=new Uint8Array(8+n);b[0]=2;"
+    "new DataView(b.buffer).setUint32(4,off,true);b.set(data.subarray(off,off+n),8);ws.send(b);off+=n;};"
+    "ws.onopen=()=>ws.send(JSON.stringify({v:1,type:'ota.begin',target:$('t').value,size:data.length}));"
+    "ws.onmessage=e=>{if(typeof e.data!=='string')return;const m=JSON.parse(e.data);"
+    "if(m.type==='ok'&&m.for==='ota.begin')next();"
+    "else if(m.type==='ota.ack'){$('p').value=m.received/data.length;if(m.received<data.length)next();}"
+    "else if(m.type==='ok'&&m.for==='ota.end'){$('s').textContent='Done. The bridge is restarting; reload in a few seconds.';}"
+    "else if(m.type==='error'){$('s').textContent=m.message;}};};"
+    "</script>";
+
+static esp_err_t update_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_send(req, UPDATE_PAGE, sizeof UPDATE_PAGE - 1);
+}
+
+static bool s_mounted = false;
+
+void web_unmount_app(void)
+{
+    if (s_mounted) esp_vfs_littlefs_unregister("littlefs");
+    s_mounted = false;
 }
 
 // ---- static files ----
@@ -145,12 +187,8 @@ static esp_err_t file_handler(httpd_req_t *req)
     char path[160];
     snprintf(path, sizeof path, FS_BASE "%s", strcmp(uri, "/") == 0 ? "/index.html" : uri);
     if (!is_file(path)) snprintf(path, sizeof path, FS_BASE "/index.html");  // single-page app
-    FILE *f = fopen(path, "rb");
-    if (!f) {
-        httpd_resp_set_type(req, "text/plain");
-        return httpd_resp_sendstr(req, "Resonance bridge is running, but the web app isn't on flash yet.\n"
-                                       "Build it (npm run build) and flash the littlefs partition.\n");
-    }
+    FILE *f = s_mounted ? fopen(path, "rb") : NULL;
+    if (!f) return update_handler(req);  // no web app on flash: offer to upload one
     httpd_resp_set_type(req, content_type(path));
     // Hashed asset names change on every build, so they can be cached hard.
     if (strstr(path, "/assets/")) httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
@@ -178,7 +216,8 @@ void web_start(void)
         .dont_mount = false,
     };
     esp_err_t err = esp_vfs_littlefs_register(&fs);
-    if (err != ESP_OK) ESP_LOGW(TAG, "web app partition not mounted (%s); serving a placeholder", esp_err_to_name(err));
+    s_mounted = err == ESP_OK;
+    if (!s_mounted) ESP_LOGW(TAG, "web app partition not mounted (%s); serving the update page", esp_err_to_name(err));
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.uri_match_fn = httpd_uri_match_wildcard;
@@ -195,7 +234,9 @@ void web_start(void)
         .is_websocket = true,
     };
     const httpd_uri_t files = {.uri = "/*", .method = HTTP_GET, .handler = file_handler};
+    const httpd_uri_t update = {.uri = "/update", .method = HTTP_GET, .handler = update_handler};
     httpd_register_uri_handler(s_server, &ws);
+    httpd_register_uri_handler(s_server, &update);
     httpd_register_uri_handler(s_server, &files);
     ESP_LOGI(TAG, "HTTP on port 80, WebSocket at /ws");
 }
