@@ -1,0 +1,21 @@
+{
+  "name": "@resonance/analysis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure TypeScript RF analysis for Resonance: calibration, SWR, resonance, verdicts, trim coach.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

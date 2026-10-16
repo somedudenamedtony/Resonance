@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# Firmware
+firmware/.pio/
+firmware/.vscode/
+firmware/sdkconfig.*
+!firmware/sdkconfig.defaults
