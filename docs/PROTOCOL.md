@@ -62,8 +62,24 @@ Repeated `count` times after the header.
 | 20 | f32 | S21 imaginary (only if flags bit 0) |
 
 Record size is 16 bytes (S11 only) or 24 bytes (with S21). Frames should stay under
-4 KB, so a frame carries at most 250 S11 records. Frames for one scan arrive in order of
+4 KB, so a frame carries at most 255 S11 records (170 with S21). Frames for one scan arrive in order of
 `offset` and together cover `0 .. points-1` exactly once.
 
-Values are **raw** (uncorrected): the bridge sends `cal off` to the NanoVNA and the app
-applies its own calibration.
+Values are **raw** (uncorrected): the bridge's scan mask sets the NanoVNA-D "no
+calibration" and "no electrical delay" bits (0x08, 0x10), and the app applies its own
+calibration. The device's stored calibration is never changed.
+
+## How the bridge talks to the NanoVNA
+
+Implemented in `firmware/components/resonance_core` (`rc_shell.c`, `rc_bridge.c`), checked
+against NanoVNA-D's `main.c`:
+
+- On attach: press Enter to sync on a prompt, then `info` (model from `Board:`, max points
+  from `[p:NNN`), `version`, `help` (binary support if `scan_bin` is listed).
+- Each command's response is `<echo>\r\n<body>ch> `. The bridge finds the body by matching
+  the echoed command, so stray banners and prompts are ignored.
+- Binary scans are read by length (`u16 mask`, `u16 points`, then records), never by
+  searching for `ch> `, since float bytes can contain it.
+- Requests larger than the device's max points are split into even segments with matching
+  frequencies; frames to the app always count offsets across the whole sweep.
+- While the bridge re-syncs after a timeout it reports `device` with `connected: false`.

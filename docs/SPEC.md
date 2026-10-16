@@ -84,10 +84,10 @@ The app talks JSON over one WebSocket; the bridge translates to NanoVNA shell co
 | Command | Purpose | Notes |
 | --- | --- | --- |
 | `info`, `version` | Identify model and firmware | Picks the command dialect at connect |
-| `cal off` | Disable on-device correction | Resonance applies its own calibration (see Analysis) |
-| `scan <start> <stop> <points> <mask>` | Sweep and return frequency + S11 (+ S21) | Binary output when firmware supports it; text fallback |
+| `help` | Detect binary scan support | `scan_bin` listed means the binary outmask bit (0x80) works |
+| `scan <start> <stop> <points> <mask>` | Sweep and return frequency + S11 (+ S21) | Mask 0x1b (+0x80 binary): frequency, S11, skip device calibration (0x08) and electrical delay (0x10), so the device's own settings are left alone; text fallback on older firmware |
 | `sweep` + `data 0` / `data 1` | Fallback sweep path | For older firmware without `scan` |
-| `pause`, `resume` | Stop the device's own sweeping | Avoids fighting the device during scans |
+| `pause`, `resume` | Stop the device's own sweeping | `scan` pauses sweeping itself on NanoVNA-D |
 | `capture` | Device screenshot | Advanced view only |
 
 Max points per scan varies by model (101 on original, 401+ on H4/DiSlord builds). The bridge splits larger requests into segments and stitches them.

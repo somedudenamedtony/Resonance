@@ -9,22 +9,42 @@ NanoVNA ──USB serial──▶ ESP32-S3 bridge ──Wi-Fi (HTTP + WebSocket)
 
 - **`analysis/`** — pure TypeScript RF math: calibration (1-port OSL), SWR, impedance,
   resonance, bandwidth, verdicts, trim coach. No UI dependencies; unit-tested with Vitest.
-- **`app/`** — Preact + Vite web app. Served by the bridge in the field; runs against a
-  built-in simulated NanoVNA on a desktop browser for development.
-- **`firmware/`** — ESP32-S3 bridge (PlatformIO, ESP-IDF): USB host CDC to the NanoVNA,
-  Wi-Fi AP, static file server, WebSocket relay. No RF math.
+- **`app/`** — Preact + Vite web app. Served by the bridge in the field.
+- **`firmware/`** — ESP32-S3 bridge (native ESP-IDF). The protocol and NanoVNA logic live in
+  a portable C core (`firmware/components/resonance_core`) that also runs on the host.
+- **`emulator/`** — hardware-free test stack: an emulated NanoVNA shell (modeled on
+  NanoVNA-D) driving the real C bridge core, exposed over a real WebSocket.
 - **`docs/`** — the spec and the bridge protocol.
 
 The full product spec lives in [`docs/SPEC.md`](docs/SPEC.md).
+
+### Testing without hardware
+
+```
+app (BridgeClient) ──WebSocket──▶ Node harness ──stdio──▶ resonance-bridge-host (C core)
+                                                              │ serial fd
+                                                              ▼
+                                                   emulated NanoVNA (TypeScript)
+```
+
+The end-to-end tests run the app's real client against the real C core: probe, binary and
+text scans, segmentation for 101-point firmware, a full open/short/load calibration round
+trip with realistic raw errors, unplug/replug mid-scan, cancel, hung-device timeout.
 
 ## Getting started
 
 ```bash
 npm install
-npm test          # analysis unit tests
-npm run dev       # app at http://localhost:5173 against the simulator
-npm run check     # typecheck + test + build (what CI runs)
+npm run test:c    # C bridge core unit tests (needs cmake + a C compiler)
+npm test          # TypeScript unit tests + end-to-end against the emulated NanoVNA
+npm run dev       # app at http://localhost:5173 against the in-browser simulator
+npm run emulate   # real C bridge + emulated NanoVNA at ws://127.0.0.1:8080/ws
+npm run check     # typecheck + test + build
 ```
+
+`npm run emulate -- --antenna long20 --dialect classic --raw` picks a pretend antenna,
+older 101-point firmware, and realistic uncalibrated errors. Type `detach`, `attach`,
+`antenna <id>` or `port open|short|load` at its prompt.
 
 ## Status
 
@@ -43,18 +63,31 @@ Exit: app runs in a desktop browser against the simulator and plots a fake SWR c
 - [x] `docs`: SPEC.md, PROTOCOL.md
 - [x] CI: typecheck, test, build on push
 
-### Next: M1 — bridge talks
+### M1 — bridge talks (code complete, waiting on hardware)
 
 Exit: type `version` in a browser console page, get the NanoVNA's reply over Wi-Fi.
-The plan is in [`firmware/README.md`](firmware/README.md). Start with the USB host CDC
-spike; it is the biggest risk. The app's Connection screen already has a command console
-that sends `raw` messages, so open the app with `?bridge=ws://192.168.4.1/ws` to test it.
+
+- [x] Bridge core in portable C: shell session, probe, scan (binary + text), segmentation,
+      cancel/queue, console, timeouts, detach; C unit tests under ASan/UBSan
+- [x] NanoVNA emulator (NanoVNA-D and classic dialects) + end-to-end tests with the app client
+- [x] ESP32 platform layer: USB host CDC-ACM, Wi-Fi AP, HTTP + WebSocket, LittleFS, LED;
+      builds in CI, flashable images uploaded as artifacts
+- [ ] Run on hardware: follow the first-flash checklist in [`firmware/README.md`](firmware/README.md)
+
+Also done ahead of M2/M3: binary streaming, segmenting, app hosting from LittleFS, and the
+calibration math validated end to end against emulated raw data.
+
+### Next without hardware
+
+- M3 app work: guided Calibrate flow and applying calibration in Check (the math is done
+  and proven in `emulator/test/e2e.test.ts`).
+- M4: Tune screen with the trim coach and live re-sweep, against the emulator.
 
 ### Trying the app
 
 `npm run dev`, open http://localhost:5173 at phone width. Tap the status strip to open
-Connection, where the simulator lets you pick a pretend antenna (well tuned, too long,
-too short, poor match) or unplug the NanoVNA.
+Connection, where the in-browser simulator lets you pick a pretend antenna or unplug the
+NanoVNA. For the full stack use `npm run emulate` and open the URL it prints.
 
 ### Hardware
 
