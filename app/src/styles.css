@@ -1143,3 +1143,47 @@ input[type="text"] {
   opacity: 0;
   cursor: pointer;
 }
+
+.advanced-link {
+  display: block;
+  margin-top: 12px;
+}
+
+.marker-field {
+  margin-top: 14px;
+}
+
+input[type="range"] {
+  width: 100%;
+  min-height: 44px;
+  accent-color: var(--trace);
+}
+
+.readout {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.readout div {
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.readout div.wide {
+  grid-column: 1 / -1;
+}
+
+.readout dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.readout dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 650;
+}

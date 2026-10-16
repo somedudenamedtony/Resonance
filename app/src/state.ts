@@ -43,6 +43,7 @@ export type Route =
   | { name: "profile"; id: string }
   | { name: "settings" }
   | { name: "coax" }
+  | { name: "advanced" }
   | { name: "soon"; job: string; milestone: string };
 
 export const client = new BridgeClient(chooseTransport());

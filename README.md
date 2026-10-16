@@ -112,7 +112,8 @@ calibration math validated end to end against emulated raw data.
 - [x] Coax analysis: TDR, length (TDR + quarter wave), loss, faults; Touchstone/CSV export
 - [x] Test coax screen: cable type, far end open/antenna, length, loss vs typical, faults,
       reflection-vs-distance plot; simulator and emulator (`port coax`) have a pretend cable
-- [ ] Advanced view: Smith chart with zones, R/X and return loss, markers, export
+- [x] Advanced view: Smith chart with zones, R/X and return loss, marker slider with
+      readouts (SWR, RL, R, X, |Z|, Γ, equivalent L or C), Touchstone/CSV download
 - [ ] Device screenshot (`capture`) through the bridge
 - [ ] Updates over Wi-Fi (firmware and app image)
 

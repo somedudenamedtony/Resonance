@@ -144,6 +144,9 @@ export function Check() {
             />
           </div>
           <Readings result={last.result} />
+          <button class="link-btn advanced-link" onClick={() => go({ name: "advanced" })}>
+            Advanced: Smith chart, R and X, export
+          </button>
           <SaveBar
             check={last}
             profile={profile}
