@@ -63,9 +63,21 @@ bool rc_shell_send(rc_shell_t *sh, const char *cmd, rc_resp_mode_t mode, uint16_
     sh->done_ctx = ctx;
     memcpy(sh->echo, cmd, n);
     sh->echo[n] = 0;
+    sh->stream = NULL;
+    sh->expect_len = 0;
+    sh->streamed = 0;
     sh->len = 0;  // discard anything that arrived while idle (banner, stray prompts)
     if (n) sh->write(sh->io, (const uint8_t *)cmd, n);
     sh->write(sh->io, (const uint8_t *)"\r", 1);
+    return true;
+}
+
+bool rc_shell_send_stream(rc_shell_t *sh, const char *cmd, size_t expect_len, uint32_t now_ms, uint32_t timeout_ms,
+                          rc_shell_stream_fn stream, rc_shell_done_fn done, void *ctx)
+{
+    if (!rc_shell_send(sh, cmd, RC_RESP_STREAM, 0, 0, now_ms, timeout_ms, done, ctx)) return false;
+    sh->stream = stream;
+    sh->expect_len = expect_len;
     return true;
 }
 
@@ -97,6 +109,24 @@ static void try_complete(rc_shell_t *sh)
     if (e == 0) return;
     const uint8_t *body = sh->buf + e;
     size_t avail = sh->len - e;
+
+    if (sh->mode == RC_RESP_STREAM) {
+        // Hand body bytes over as they come, then drop them so the buffer never fills.
+        size_t want = sh->expect_len - sh->streamed;
+        size_t n = avail < want ? avail : want;
+        if (n > 0) {
+            if (sh->stream) sh->stream(sh->done_ctx, body, n, sh->streamed);
+            sh->streamed += n;
+            memmove(sh->buf + e, body + n, avail - n);
+            sh->len -= n;
+            avail -= n;
+        }
+        if (sh->streamed < sh->expect_len) return;
+        if (avail < RC_SHELL_PROMPT_LEN) return;
+        if (memcmp(body, RC_SHELL_PROMPT, RC_SHELL_PROMPT_LEN) == 0) finish(sh, RC_SHELL_OK, NULL, sh->expect_len, false);
+        else finish(sh, RC_SHELL_OK, body, avail, true);  // unexpected trailing text
+        return;
+    }
 
     if (sh->mode == RC_RESP_SCAN_BIN) {
         if (avail < 4) return;

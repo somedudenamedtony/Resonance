@@ -1,4 +1,5 @@
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
+import { rgb565beToRgba } from "../bridge/protocol";
 import { SIM_ANTENNAS, SimulatedTransport } from "../bridge/simulator";
 import { client, device, go, link } from "../state";
 
@@ -90,6 +91,8 @@ export function Connect() {
         </>
       )}
 
+      <DeviceScreen ready={l === "open" && !!d?.connected} />
+
       <h3 class="section-title">Command console</h3>
       <form
         onSubmit={async (e) => {
@@ -119,6 +122,43 @@ export function Connect() {
       </form>
       <div class="console num" aria-live="polite">
         {reply || <span class="muted">Replies show here</span>}
+      </div>
+    </>
+  );
+}
+
+function DeviceScreen({ ready }: { ready: boolean }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [state, setState] = useState<"idle" | "loading" | "shown" | { error: string }>("idle");
+  const show = async () => {
+    setState("loading");
+    try {
+      const cap = await client.capture();
+      const c = canvas.current!;
+      c.width = cap.width;
+      c.height = cap.height;
+      const ctx = c.getContext("2d")!;
+      const img = ctx.createImageData(cap.width, cap.height);
+      img.data.set(rgb565beToRgba(cap.data, cap.width, cap.height));
+      ctx.putImageData(img, 0, 0);
+      setState("shown");
+    } catch (e) {
+      setState({ error: (e as Error).message });
+    }
+  };
+  return (
+    <>
+      <h3 class="section-title">Device screen</h3>
+      <canvas ref={canvas} class="device-screen" hidden={state !== "shown"} aria-label="The NanoVNA's screen" />
+      {typeof state === "object" && (
+        <p class="field-error" role="alert">
+          {state.error}
+        </p>
+      )}
+      <div class="actions single">
+        <button class="btn" disabled={!ready || state === "loading"} onClick={show}>
+          {state === "loading" ? "Reading the screen…" : state === "shown" ? "Refresh screen" : "Show the NanoVNA's screen"}
+        </button>
       </div>
     </>
   );

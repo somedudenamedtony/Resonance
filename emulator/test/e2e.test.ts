@@ -119,6 +119,20 @@ describe("app ↔ C bridge ↔ emulated NanoVNA", () => {
     expect(rawErr).toBeGreaterThan(calErr * 3);
   });
 
+  it("streams the NanoVNA's screen (307 KB) through the bridge", async () => {
+    const { client } = await setup();
+    await client.scan({ startHz: 14_000_000, stopHz: 14_350_000, points: 101 });
+    const cap = await client.capture();
+    expect(cap).toMatchObject({ width: 480, height: 320 });
+    expect(cap.data.length).toBe(480 * 320 * 2);
+    // The yellow sweep trace (RGB565 0xFF20 for 255,230,0) is in there somewhere.
+    let yellow = 0;
+    for (let i = 0; i < cap.data.length; i += 2) if (cap.data[i] === 0xff && cap.data[i + 1] === 0x20) yellow++;
+    expect(yellow).toBeGreaterThan(100);
+    // And the bridge is free for the next scan.
+    expect((await client.scan({ startHz: 14_000_000, stopHz: 14_350_000, points: 11 })).freqHz).toHaveLength(11);
+  });
+
   it("relays console commands", async () => {
     const { client } = await setup();
     expect(await client.raw("version")).toBe("1.2.40-emu");

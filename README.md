@@ -114,7 +114,8 @@ calibration math validated end to end against emulated raw data.
       reflection-vs-distance plot; simulator and emulator (`port coax`) have a pretend cable
 - [x] Advanced view: Smith chart with zones, R/X and return loss, marker slider with
       readouts (SWR, RL, R, X, |Z|, Γ, equivalent L or C), Touchstone/CSV download
-- [ ] Device screenshot (`capture`) through the bridge
+- [x] Device screen: `capture` streamed by the bridge (C core streaming mode, 4 KB frames
+      of kind 0x03), shown on the Connection screen; C, app and end-to-end tests
 - [ ] Updates over Wi-Fi (firmware and app image)
 
 ### Trying the app

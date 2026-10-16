@@ -113,13 +113,19 @@ static void execute(fake_nanovna_t *f)
         outs(f, "1.2.40-fake\r\n");
     } else if (!strcmp(argv[0], "info")) {
         char m[160];
-        snprintf(m, sizeof m, "Board: NanoVNA-H 4\r\nLicensed under GPL.\r\nVersion: 1.2.40 [p:%u, IF:12k, ADC:384k]\r\n",
+        snprintf(m, sizeof m, "Board: NanoVNA-H 4\r\nLicensed under GPL.\r\nVersion: 1.2.40 [p:%u, IF:12k, ADC:384k, Lcd:32x24]\r\n",
                  f->max_points);
         outs(f, m);
     } else if (!strcmp(argv[0], "help")) {
         outs(f, f->binary ? "Commands: scan scan_bin data version info help\r\n" : "Commands: scan data version info help\r\n");
     } else if (!strcmp(argv[0], "scan")) {
         cmd_scan(f, argc, argv);
+    } else if (!strcmp(argv[0], "capture")) {
+        // 32x24 RGB565: a byte pattern that includes "ch> " to make sure it's read by length.
+        for (int i = 0; i < 32 * 24 * 2; i++) {
+            uint8_t b = (i % 100 < 4) ? (uint8_t)"ch> "[i % 100] : (uint8_t)(i * 7);
+            out(f, &b, 1);
+        }
     } else if (!strcmp(argv[0], "pause") || !strcmp(argv[0], "resume")) {
         // no output
     } else {

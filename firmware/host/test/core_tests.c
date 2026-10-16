@@ -218,14 +218,18 @@ static void test_frame_layout(void)
 static void test_parse_info(void)
 {
     char model[48] = {0};
-    uint16_t maxp = 101;
-    rc_bridge_parse_info("Board: NanoVNA-H 4\r\nVersion: 1.2.40 [p:401, IF:12k]\r\n", model, sizeof model, &maxp);
+    uint16_t maxp = 101, w = 320, hh = 240;
+    rc_bridge_parse_info("Board: NanoVNA-H 4\r\nVersion: 1.2.40 [p:401, IF:12k, Lcd:480x320]\r\n", model, sizeof model,
+                         &maxp, &w, &hh);
     CHECK(strcmp(model, "NanoVNA-H 4") == 0);
     CHECK(maxp == 401);
+    CHECK(w == 480 && hh == 320);
     maxp = 101;
     model[0] = 0;
-    rc_bridge_parse_info("Kernel: 4.0.0\r\n", model, sizeof model, &maxp);
-    CHECK(model[0] == 0 && maxp == 101);
+    w = 320;
+    hh = 240;
+    rc_bridge_parse_info("Kernel: 4.0.0\r\n", model, sizeof model, &maxp, &w, &hh);
+    CHECK(model[0] == 0 && maxp == 101 && w == 320 && hh == 240);
 }
 
 // ---------------------------------------------------------------- bridge + fake device
@@ -241,6 +245,9 @@ typedef struct {
     uint32_t npts;
     int frames;
     bool frame_order_ok;
+    uint8_t cap[4096];
+    uint32_t cap_len;
+    bool cap_order_ok;
     size_t chunk;  // deliver device output in chunks of this size
 } harness_t;
 
@@ -259,6 +266,14 @@ static void h_send_text(void *u, const char *json)
 static void h_send_binary(void *u, const uint8_t *d, size_t n)
 {
     harness_t *h = u;
+    if (d[0] == RC_FRAME_CAPTURE) {
+        uint32_t off = (uint32_t)d[4] | ((uint32_t)d[5] << 8) | ((uint32_t)d[6] << 16) | ((uint32_t)d[7] << 24);
+        if (off != h->cap_len) h->cap_order_ok = false;
+        size_t k = n - 8;
+        if (h->cap_len + k <= sizeof h->cap) memcpy(h->cap + h->cap_len, d + 8, k);
+        h->cap_len += (uint32_t)k;
+        return;
+    }
     h->frames++;
     uint16_t offset = (uint16_t)(d[4] | (d[5] << 8));
     uint16_t count = (uint16_t)(d[6] | (d[7] << 8));
@@ -277,6 +292,7 @@ static harness_t *h_new(bool binary, uint16_t max_points)
     harness_t *h = calloc(1, sizeof *h);
     h->b = calloc(1, sizeof *h->b);
     h->frame_order_ok = true;
+    h->cap_order_ok = true;
     h->chunk = 37;
     rc_bridge_io_t io = {h_serial_write, h_send_text, h_send_binary, NULL, NULL, h};
     rc_bridge_init(h->b, &io, 0);
@@ -542,6 +558,32 @@ static void test_bridge_raw(void)
     h_free(h);
 }
 
+static void test_bridge_capture(void)
+{
+    harness_t *h = h_new(true, 401);
+    h_attach(h);
+    CHECK(h->b->lcd_w == 32 && h->b->lcd_h == 24);
+    h_client(h, "{\"v\":1,\"type\":\"capture\"}");
+    cJSON *b = h_last(h, "capture.begin");
+    CHECK(b && num(b, "width") == 32 && num(b, "height") == 24 && strcmp(str(b, "format"), "rgb565be") == 0);
+    cJSON_Delete(b);
+    h_run(h, 500);
+    cJSON *e = h_last(h, "capture.end");
+    CHECK(e && num(e, "bytes") == 32 * 24 * 2);
+    cJSON_Delete(e);
+    CHECK(h->cap_len == 32 * 24 * 2 && h->cap_order_ok);
+    bool same = true;
+    for (int i = 0; i < 32 * 24 * 2; i++) {
+        uint8_t want = (i % 100 < 4) ? (uint8_t)"ch> "[i % 100] : (uint8_t)(i * 7);
+        if (h->cap[i] != want) same = false;
+    }
+    CHECK(same);
+    // The shell is free again: a scan works right after.
+    h->npts = 0;
+    check_full_scan(h, 14000000, 14350000, 51);
+    h_free(h);
+}
+
 int main(void)
 {
     RUN(test_shell_text_response);
@@ -562,6 +604,7 @@ int main(void)
     RUN(test_bridge_detach_mid_scan);
     RUN(test_bridge_timeout_then_recovers);
     RUN(test_bridge_raw);
+    RUN(test_bridge_capture);
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

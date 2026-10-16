@@ -66,3 +66,45 @@ export function seededRandom(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/**
+ * A NanoVNA-like screen as big-endian RGB565 (what `capture` sends): dark background, grid,
+ * and the |S11| trace of the last sweep in yellow. For the simulator and emulator.
+ */
+export function fakeNanoVnaScreen(width: number, height: number, s11: readonly Complex[] = []): Uint8Array {
+  const out = new Uint8Array(width * height * 2);
+  const put = (x: number, y: number, r: number, g: number, b: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const v = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+    const o = (y * width + x) * 2;
+    out[o] = v >> 8;
+    out[o + 1] = v & 0xff;
+  };
+  const left = Math.round(width * 0.1);
+  const right = Math.round(width * 0.95);
+  const top = Math.round(height * 0.08);
+  const bottom = Math.round(height * 0.9);
+  for (let y = top; y <= bottom; y++)
+    for (let x = left; x <= right; x++) {
+      const gx = (x - left) % Math.round((right - left) / 10) === 0;
+      const gy = (y - top) % Math.round((bottom - top) / 8) === 0;
+      if (gx || gy) put(x, y, 70, 70, 70);
+    }
+  if (s11.length > 1) {
+    let py = -1;
+    for (let x = left; x <= right; x++) {
+      const i = Math.round(((x - left) / (right - left)) * (s11.length - 1));
+      const g = s11[i]!;
+      const mag = Math.min(1, Math.hypot(g.re, g.im));
+      const y = Math.round(bottom - mag * (bottom - top));
+      const from = py < 0 ? y : Math.min(py, y);
+      const to = py < 0 ? y : Math.max(py, y);
+      for (let yy = from; yy <= to; yy++) {
+        put(x, yy, 255, 230, 0);
+        put(x, yy + 1, 255, 230, 0);
+      }
+      py = y;
+    }
+  }
+  return out;
+}

@@ -48,6 +48,7 @@ typedef enum {
     RC_JOB_PROBE,
     RC_JOB_SCAN,
     RC_JOB_RAW,
+    RC_JOB_CAPTURE,
 } rc_job_t;
 
 typedef struct {
@@ -73,6 +74,7 @@ typedef struct rc_bridge {
     char firmware[32];
     uint16_t max_points;
     bool binary;
+    uint16_t lcd_w, lcd_h;  // screen size for `capture`
     int probe_step;
     int probe_failures;
     uint32_t next_action_ms;  // probe retry / settle timer
@@ -93,6 +95,10 @@ typedef struct rc_bridge {
 
     // Raw
     char raw_cmd[64];
+
+    // Capture: screen bytes accumulate after the frame header until a frame is full
+    size_t cap_fill;
+    uint32_t cap_offset;
 } rc_bridge_t;
 
 void rc_bridge_init(rc_bridge_t *b, const rc_bridge_io_t *io, uint32_t now_ms);
@@ -106,8 +112,12 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
 
 void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms);
 
-// Parse a NanoVNA `info` reply: model from "Board: ..." and max points from "[p:NNN".
-void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint16_t *max_points);
+// Parse a NanoVNA `info` reply: model from "Board: ...", max points from "[p:NNN", screen size
+// from "Lcd:WxH" (left unchanged when absent).
+void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint16_t *max_points, uint16_t *lcd_w,
+                          uint16_t *lcd_h);
+
+#define RC_FRAME_CAPTURE 0x03
 
 #ifdef __cplusplus
 }

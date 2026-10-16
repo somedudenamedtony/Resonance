@@ -7,6 +7,8 @@ import {
   type AntennaType,
   coaxGamma,
   type CoaxModel,
+  type Complex,
+  fakeNanoVnaScreen,
   estimateElementLengthM,
   type RlcAntenna,
   rlcGamma,
@@ -14,6 +16,7 @@ import {
 } from "@resonance/analysis";
 import {
   type ClientMessage,
+  encodeCaptureFrame,
   encodeScanFrame,
   PROTOCOL_VERSION,
   recordsPerFrame,
@@ -71,6 +74,7 @@ export class SimulatedTransport implements Transport {
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private activeScan: number | null = null;
   private rand = seededRandom(7);
+  private lastS11: Complex[] = [];
 
   constructor(public options: SimulatorOptions = { ...DEFAULT_SIM_OPTIONS }) {}
 
@@ -127,6 +131,19 @@ export class SimulatedTransport implements Transport {
           this.emit({ v: 1, type: "raw.reply", command: msg.command, text: this.rawReply(msg.command) }),
         );
         break;
+      case "capture": {
+        if (!this.options.deviceConnected) {
+          this.emit({ v: 1, type: "error", code: "no_device", message: "NanoVNA not detected" });
+          break;
+        }
+        const w = 480;
+        const h = 320;
+        const img = fakeNanoVnaScreen(w, h, this.lastS11);
+        this.emit({ v: 1, type: "capture.begin", width: w, height: h, format: "rgb565be" });
+        for (let o = 0; o < img.length; o += 4088) this.onBinary?.(encodeCaptureFrame(o, img.subarray(o, o + 4088)));
+        this.later(30, () => this.emit({ v: 1, type: "capture.end", bytes: img.length }));
+        break;
+      }
       case "wifi.set":
       case "ota.begin":
         this.later(20, () => this.emit({ v: 1, type: "ok", for: msg.type }));
@@ -188,6 +205,7 @@ export class SimulatedTransport implements Transport {
       all.push({ freqHz: f, s11re: g.re + this.gauss() * n, s11im: g.im + this.gauss() * n });
     }
 
+    this.lastS11 = all.map((p) => ({ re: p.s11re, im: p.s11im }));
     this.activeScan = id;
     const started = performance.now();
     this.emit({ v: 1, type: "scan.begin", id, points, ports: "s11" });

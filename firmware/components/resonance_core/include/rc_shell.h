@@ -32,7 +32,11 @@ typedef enum {
 typedef enum {
     RC_RESP_TEXT = 0,   // body ends at the prompt
     RC_RESP_SCAN_BIN,   // body = u16 mask, u16 points, records; then the prompt
+    RC_RESP_STREAM,     // body = exactly expect_len bytes, handed to stream_cb as they arrive
 } rc_resp_mode_t;
+
+// Receives a streamed body in order. `offset` counts from the start of the body.
+typedef void (*rc_shell_stream_fn)(void *ctx, const uint8_t *data, size_t len, size_t offset);
 
 // Called once per command. For RC_RESP_TEXT the body has the echo line and the trailing
 // prompt removed. For RC_RESP_SCAN_BIN it is the binary payload starting at the mask, unless
@@ -56,6 +60,9 @@ typedef struct {
     uint16_t expect_mask;    // binary mode: mask we asked for
     uint16_t expect_points;  // binary mode: points we asked for
     char echo[64];           // the command, to find its echo line
+    size_t expect_len;       // stream mode: body length
+    size_t streamed;         // stream mode: bytes delivered so far
+    rc_shell_stream_fn stream;
     rc_shell_done_fn done;
     void *done_ctx;
 } rc_shell_t;
@@ -70,6 +77,11 @@ void rc_shell_reset(rc_shell_t *sh);
 bool rc_shell_send(rc_shell_t *sh, const char *cmd, rc_resp_mode_t mode, uint16_t expect_mask,
                    uint16_t expect_points, uint32_t now_ms, uint32_t timeout_ms, rc_shell_done_fn done,
                    void *ctx);
+
+// Send a command whose body is exactly `expect_len` bytes (e.g. `capture`), streamed to `stream`
+// as it arrives instead of buffered. `done` gets body NULL / len expect_len when complete.
+bool rc_shell_send_stream(rc_shell_t *sh, const char *cmd, size_t expect_len, uint32_t now_ms, uint32_t timeout_ms,
+                          rc_shell_stream_fn stream, rc_shell_done_fn done, void *ctx);
 
 // Feed bytes received from the device.
 void rc_shell_feed(rc_shell_t *sh, const uint8_t *data, size_t len);

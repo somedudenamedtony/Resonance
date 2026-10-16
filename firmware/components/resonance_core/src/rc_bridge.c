@@ -87,8 +87,21 @@ static void copy_trimmed(char *dst, size_t cap, const char *src, size_t n)
     dst[n] = 0;
 }
 
-void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint16_t *max_points)
+void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint16_t *max_points, uint16_t *lcd_w,
+                          uint16_t *lcd_h)
 {
+    const char *lcd = strstr(text, "Lcd:");
+    if (lcd) {
+        char *end;
+        long w = strtol(lcd + 4, &end, 10);
+        if (*end == 'x') {
+            long h = strtol(end + 1, NULL, 10);
+            if (w > 0 && w <= 2048 && h > 0 && h <= 2048) {
+                *lcd_w = (uint16_t)w;
+                *lcd_h = (uint16_t)h;
+            }
+        }
+    }
     const char *board = strstr(text, "Board:");
     if (board) {
         board += 6;
@@ -140,6 +153,8 @@ void rc_bridge_device_attached(rc_bridge_t *b, uint32_t now_ms)
     b->firmware[0] = 0;
     b->max_points = DEFAULT_MAX_POINTS;
     b->binary = false;
+    b->lcd_w = 320;  // original NanoVNA screen; NanoVNA-D reports its size in `info`
+    b->lcd_h = 240;
     logf_(b, "NanoVNA attached, probing");
     // Give the device a moment to print its banner before we press Enter.
     start_probe(b, 200);
@@ -148,7 +163,7 @@ void rc_bridge_device_attached(rc_bridge_t *b, uint32_t now_ms)
 static void fail_active_job(rc_bridge_t *b, const char *code, const char *message)
 {
     if (b->job == RC_JOB_SCAN && !b->scan_cancelled) send_error(b, code, message, b->scan.id);
-    if (b->job == RC_JOB_RAW) send_error(b, code, message, -1);
+    if (b->job == RC_JOB_RAW || b->job == RC_JOB_CAPTURE) send_error(b, code, message, -1);
     b->job = RC_JOB_NONE;
     b->job_waiting = false;
 }
@@ -275,7 +290,7 @@ static void handle_probe(rc_bridge_t *b, rc_shell_status_t st, const char *text)
         b->next_action_ms = b->now + SYNC_SETTLE_MS;
         return;
     case PROBE_INFO:
-        rc_bridge_parse_info(text, b->model, sizeof b->model, &b->max_points);
+        rc_bridge_parse_info(text, b->model, sizeof b->model, &b->max_points, &b->lcd_w, &b->lcd_h);
         break;
     case PROBE_VERSION: {
         const char *eol = strpbrk(text, "\r\n");
@@ -377,10 +392,60 @@ static void handle_raw(rc_bridge_t *b, rc_shell_status_t st, const char *text)
     send_json(b, o);
 }
 
+static void flush_capture(rc_bridge_t *b)
+{
+    if (b->cap_fill == 0) return;
+    uint8_t *f = b->frame;
+    f[0] = RC_FRAME_CAPTURE;
+    f[1] = 0;
+    f[2] = 0;
+    f[3] = 0;
+    for (int i = 0; i < 4; i++) f[4 + i] = (uint8_t)(b->cap_offset >> (8 * i));
+    b->io.send_binary(b->io.user, f, RC_FRAME_HEADER + b->cap_fill);
+    b->cap_offset += (uint32_t)b->cap_fill;
+    b->cap_fill = 0;
+}
+
+static void on_capture_bytes(void *ctx, const uint8_t *data, size_t len, size_t offset)
+{
+    rc_bridge_t *b = ctx;
+    const size_t room = RC_FRAME_MAX - RC_FRAME_HEADER;
+    while (len > 0) {
+        size_t n = room - b->cap_fill < len ? room - b->cap_fill : len;
+        memcpy(b->frame + RC_FRAME_HEADER + b->cap_fill, data, n);
+        b->cap_fill += n;
+        data += n;
+        len -= n;
+        if (b->cap_fill == room) flush_capture(b);
+    }
+}
+
+static void handle_capture_done(rc_bridge_t *b, rc_shell_status_t st, bool is_text)
+{
+    b->job = RC_JOB_NONE;
+    if (st == RC_SHELL_TIMEOUT) {
+        send_error(b, "timeout", "The NanoVNA didn't send its screen.", -1);
+        start_probe(b, PROBE_RETRY_MS);
+        return;
+    }
+    if (st != RC_SHELL_OK || is_text) {
+        send_error(b, "internal", "The screen capture didn't come through cleanly.", -1);
+        return;
+    }
+    flush_capture(b);
+    cJSON *o = msg("capture.end");
+    cJSON_AddNumberToObject(o, "bytes", b->cap_offset);
+    send_json(b, o);
+}
+
 static void on_shell_done(void *ctx, rc_shell_status_t st, const uint8_t *body, size_t len, bool is_text)
 {
     rc_bridge_t *b = ctx;
     if (st == RC_SHELL_ABORTED) return;  // detach handles reporting
+    if (b->job == RC_JOB_CAPTURE) {
+        handle_capture_done(b, st, is_text);
+        return;
+    }
 
     // Text handlers want a NUL-terminated copy; the shell buffer may be full, so copy.
     char *text = NULL;
@@ -401,6 +466,7 @@ static void on_shell_done(void *ctx, rc_shell_status_t st, const uint8_t *body, 
     case RC_JOB_RAW:
         handle_raw(b, st, text ? text : "");
         break;
+    case RC_JOB_CAPTURE:  // handled above
     case RC_JOB_NONE:
         break;
     }
@@ -506,6 +572,33 @@ static void handle_raw_msg(rc_bridge_t *b, const cJSON *o)
     }
 }
 
+static void handle_capture_msg(rc_bridge_t *b)
+{
+    if (b->dev != RC_DEV_READY) {
+        send_error(b, "no_device", "NanoVNA not detected.", -1);
+        return;
+    }
+    if (b->shell.busy || b->job != RC_JOB_NONE) {
+        send_error(b, "busy", "The NanoVNA is busy. Try again in a moment.", -1);
+        return;
+    }
+    size_t bytes = (size_t)b->lcd_w * b->lcd_h * 2;
+    b->job = RC_JOB_CAPTURE;
+    b->cap_fill = 0;
+    b->cap_offset = 0;
+    if (!rc_shell_send_stream(&b->shell, "capture", bytes, b->now, 4000 + (uint32_t)(bytes / 50), on_capture_bytes,
+                              on_shell_done, b)) {
+        b->job = RC_JOB_NONE;
+        send_error(b, "busy", "The NanoVNA is busy. Try again in a moment.", -1);
+        return;
+    }
+    cJSON *o = msg("capture.begin");
+    cJSON_AddNumberToObject(o, "width", b->lcd_w);
+    cJSON_AddNumberToObject(o, "height", b->lcd_h);
+    cJSON_AddStringToObject(o, "format", "rgb565be");
+    send_json(b, o);
+}
+
 static void handle_wifi(rc_bridge_t *b, const cJSON *o)
 {
     const char *mode = get_string(o, "mode");
@@ -549,6 +642,8 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
         handle_cancel(b, o);
     } else if (strcmp(type, "raw") == 0) {
         handle_raw_msg(b, o);
+    } else if (strcmp(type, "capture") == 0) {
+        handle_capture_msg(b);
     } else if (strcmp(type, "wifi.set") == 0) {
         handle_wifi(b, o);
     } else if (strcmp(type, "ota.begin") == 0) {

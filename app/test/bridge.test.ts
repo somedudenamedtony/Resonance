@@ -68,6 +68,14 @@ describe("bridge client against the simulator", () => {
     client.stop();
   });
 
+  it("reads the device screen", async () => {
+    const { client } = await connected();
+    const cap = await client.capture();
+    expect(cap).toMatchObject({ width: 480, height: 320, format: "rgb565be" });
+    expect(cap.data.length).toBe(480 * 320 * 2);
+    client.stop();
+  });
+
   it("answers raw commands", async () => {
     const { client } = await connected();
     expect(await client.raw("version")).toBe("1.2.40-sim");

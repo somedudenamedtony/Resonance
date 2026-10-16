@@ -11,6 +11,7 @@ export type ClientMessage =
   | { v: 1; type: "scan"; id: number; startHz: number; stopHz: number; points: number; ports: Ports }
   | { v: 1; type: "cancel"; id: number }
   | { v: 1; type: "raw"; command: string }
+  | { v: 1; type: "capture" }
   | { v: 1; type: "wifi.set"; mode: "ap" | "sta"; ssid?: string; password?: string }
   | { v: 1; type: "ota.begin"; target: "firmware" | "app"; size: number };
 
@@ -30,12 +31,15 @@ export type ServerMessage =
   | { v: 1; type: "scan.begin"; id: number; points: number; ports: Ports }
   | { v: 1; type: "scan.end"; id: number; durationMs: number; cancelled?: boolean }
   | { v: 1; type: "raw.reply"; command: string; text: string }
+  | { v: 1; type: "capture.begin"; width: number; height: number; format: "rgb565be" }
+  | { v: 1; type: "capture.end"; bytes: number }
   | { v: 1; type: "ok"; for: string }
   | { v: 1; type: "error"; code: ErrorCode; message: string; id?: number };
 
 // ---- Binary frames ----
 export const FRAME_SCAN = 0x01;
 export const FRAME_OTA = 0x02;
+export const FRAME_CAPTURE = 0x03;
 export const FLAG_S21 = 0x01;
 export const HEADER_BYTES = 8;
 export const MAX_FRAME_BYTES = 4096;
@@ -119,4 +123,38 @@ export function parseServerMessage(text: string): ServerMessage {
     throw new Error(`unsupported message: ${text.slice(0, 80)}`);
   }
   return m as ServerMessage;
+}
+
+/** Capture frame: u8 kind 0x03, u8 0, u16 0, u32 byte offset, then screen bytes. */
+export function encodeCaptureFrame(offset: number, data: Uint8Array): ArrayBuffer {
+  const buf = new ArrayBuffer(HEADER_BYTES + data.length);
+  const dv = new DataView(buf);
+  dv.setUint8(0, FRAME_CAPTURE);
+  dv.setUint32(4, offset, true);
+  new Uint8Array(buf, HEADER_BYTES).set(data);
+  return buf;
+}
+
+export function decodeCaptureFrame(buf: ArrayBuffer): { offset: number; data: Uint8Array } {
+  const dv = new DataView(buf);
+  if (buf.byteLength < HEADER_BYTES || dv.getUint8(0) !== FRAME_CAPTURE) throw new Error("not a capture frame");
+  return { offset: dv.getUint32(4, true), data: new Uint8Array(buf, HEADER_BYTES) };
+}
+
+export const frameKind = (buf: ArrayBuffer) => (buf.byteLength ? new DataView(buf).getUint8(0) : -1);
+
+/** Big-endian RGB565 → RGBA pixels for a canvas. */
+export function rgb565beToRgba(src: Uint8Array, width: number, height: number): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    const v = (src[i * 2]! << 8) | src[i * 2 + 1]!;
+    const r = (v >> 11) & 0x1f;
+    const g = (v >> 5) & 0x3f;
+    const b = v & 0x1f;
+    out[i * 4] = (r << 3) | (r >> 2);
+    out[i * 4 + 1] = (g << 2) | (g >> 4);
+    out[i * 4 + 2] = (b << 3) | (b >> 2);
+    out[i * 4 + 3] = 255;
+  }
+  return out;
 }

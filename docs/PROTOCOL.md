@@ -17,6 +17,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `scan` | `id: u16`, `startHz: number`, `stopHz: number`, `points: number`, `ports: "s11" \| "s11+s21"` | `scan.begin`, binary frames, `scan.end` (or `error`) |
 | `cancel` | `id: u16` | `scan.end` with `cancelled: true` |
 | `raw` | `command: string` | `raw.reply` |
+| `capture` | — | `capture.begin`, binary frames of kind `0x03`, `capture.end` |
 | `wifi.set` | `mode: "ap" \| "sta"`, `ssid?: string`, `password?: string` | `ok`, then the bridge restarts Wi-Fi |
 | `ota.begin` | `target: "firmware" \| "app"`, `size: number` | `ok`; app then sends the image as binary frames of type `0x02` |
 
@@ -28,6 +29,8 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `scan.begin` | `id`, `points`, `ports` |
 | `scan.end` | `id`, `durationMs`, `cancelled?: boolean` |
 | `raw.reply` | `command`, `text` |
+| `capture.begin` | `width`, `height`, `format: "rgb565be"` |
+| `capture.end` | `bytes` |
 | `ok` | `for: string` (the request `type`) |
 | `error` | `code: "no_device" \| "timeout" \| "busy" \| "bad_request" \| "internal"`, `message`, `id?` |
 
@@ -43,11 +46,15 @@ All integers and floats are **little-endian**.
 
 | Offset | Type | Field |
 | --- | --- | --- |
-| 0 | u8 | `kind`: `0x01` = scan data, `0x02` = OTA chunk |
+| 0 | u8 | `kind`: `0x01` = scan data, `0x02` = OTA chunk, `0x03` = screen capture |
 | 1 | u8 | `flags`: bit 0 = record includes S21 |
 | 2 | u16 | `scanId` |
 | 4 | u16 | `offset`: index of the first point in this frame |
 | 6 | u16 | `count`: number of points in this frame |
+
+Capture frames (`0x03`) reuse the header differently: bytes 4–7 are a `u32` byte offset into
+the screen image, and the payload (up to 4088 bytes) is raw screen data: `width × height`
+pixels of big-endian RGB565, row by row, exactly as NanoVNA-D's `capture` sends it.
 
 ### Scan record
 

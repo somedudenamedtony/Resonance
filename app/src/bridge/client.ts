@@ -1,6 +1,9 @@
 import { c, type Complex, type Sweep } from "@resonance/analysis";
 import {
+  decodeCaptureFrame,
   decodeScanFrame,
+  FRAME_CAPTURE,
+  frameKind,
   type DeviceStatus,
   parseServerMessage,
   PROTOCOL_VERSION,
@@ -22,6 +25,13 @@ export interface ScanProgress {
   total: number;
   /** Partial sweep with the points received so far. */
   partial: Sweep;
+}
+
+export interface Capture {
+  width: number;
+  height: number;
+  format: "rgb565be";
+  data: Uint8Array;
 }
 
 export class BridgeError extends Error {
@@ -59,6 +69,14 @@ export class BridgeClient {
   private pending: PendingScan | null = null;
   private rawWaiters: Array<(text: string) => void> = [];
   private okWaiters: Array<{ for: string; resolve: () => void; reject: (e: Error) => void }> = [];
+  private capturing: {
+    width: number;
+    height: number;
+    data: Uint8Array | null;
+    resolve: (c: Capture) => void;
+    reject: (e: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
@@ -126,6 +144,29 @@ export class BridgeClient {
     this.failPending(new BridgeError("cancelled", "Scan cancelled."));
   }
 
+  /** The NanoVNA's screen as big-endian RGB565. */
+  capture(timeoutMs = 20_000): Promise<Capture> {
+    if (this.link !== "open") return Promise.reject(new BridgeError("disconnected", "The bridge isn't connected."));
+    if (this.capturing) return Promise.reject(new BridgeError("busy", "Already reading the screen."));
+    return new Promise<Capture>((resolve, reject) => {
+      const timer = setTimeout(() => this.failCapture(new BridgeError("timeout", "The screen didn't arrive.")), timeoutMs);
+      this.capturing = { width: 0, height: 0, data: null, resolve, reject, timer };
+      try {
+        this.transport.send({ v: PROTOCOL_VERSION, type: "capture" });
+      } catch (e) {
+        this.failCapture(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  }
+
+  private failCapture(err: Error): void {
+    const c = this.capturing;
+    if (!c) return;
+    clearTimeout(c.timer);
+    this.capturing = null;
+    c.reject(err);
+  }
+
   /** Ask the bridge to join home Wi-Fi (sta) or stay hotspot-only (ap). It restarts after "ok". */
   setWifi(mode: "ap" | "sta", ssid?: string, password?: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -178,7 +219,26 @@ export class BridgeClient {
         this.changed();
         break;
       }
+      case "capture.begin":
+        if (this.capturing) {
+          this.capturing.width = msg.width;
+          this.capturing.height = msg.height;
+          this.capturing.data = new Uint8Array(msg.width * msg.height * 2);
+        }
+        break;
+      case "capture.end": {
+        const c = this.capturing;
+        if (!c || !c.data) break;
+        clearTimeout(c.timer);
+        this.capturing = null;
+        c.resolve({ width: c.width, height: c.height, format: "rgb565be", data: c.data });
+        break;
+      }
       case "error": {
+        if (msg.id === undefined && this.capturing) {
+          this.failCapture(new BridgeError(msg.code, msg.message));
+          break;
+        }
         if (msg.id === undefined && this.okWaiters.length) {
           this.okWaiters.shift()!.reject(new BridgeError(msg.code, msg.message));
           break;
@@ -201,6 +261,13 @@ export class BridgeClient {
   }
 
   private handleBinary(buf: ArrayBuffer): void {
+    if (frameKind(buf) === FRAME_CAPTURE) {
+      const c = this.capturing;
+      if (!c?.data) return;
+      const { offset, data } = decodeCaptureFrame(buf);
+      if (offset + data.length <= c.data.length) c.data.set(data, offset);
+      return;
+    }
     const p = this.pending;
     if (!p) return;
     let frame;

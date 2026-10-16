@@ -16,6 +16,7 @@ import {
   type Complex,
   distort,
   type ErrorTerms,
+  fakeNanoVnaScreen,
   findPreset,
   rlcGamma,
   type RlcAntenna,
@@ -197,6 +198,11 @@ export class NanoVnaEmulator {
         if (ch === 0) for (const g of this.lastSweep.s11) this.write(`${f6(g.re)} ${f6(g.im)}${NL}`);
         return;
       }
+      case "capture": {
+        const [w, h] = this.options.dialect === "nanovna-d" ? [480, 320] : [320, 240];
+        this.write(fakeNanoVnaScreen(w, h, this.lastSweep.s11));
+        return;
+      }
       case "cal":
         this.write(`complete: open short load thru isoln${NL}`);
         return;
@@ -205,7 +211,7 @@ export class NanoVnaEmulator {
   }
 
   private commandList(): string[] {
-    const common = ["scan", "data", "sweep", "pause", "resume", "cal", "version", "info", "help"];
+    const common = ["scan", "data", "sweep", "pause", "resume", "cal", "capture", "version", "info", "help"];
     return this.options.dialect === "nanovna-d" ? [...common, "scan_bin"] : common;
   }
 
