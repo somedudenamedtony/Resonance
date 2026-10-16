@@ -66,6 +66,20 @@ function diagnose(
       };
     }
   }
+  // No reactance zero in the scan and the SWR minimum sits on a scan edge: resonance is
+  // somewhere beyond the edge. Say so rather than naming the edge as the resonance.
+  if (res === null && m.min.index <= 2) {
+    return {
+      cause: "too_long",
+      text: `Resonant somewhere below ${fmtMHz(m.min.freqHz, 2)} MHz, under ${band.name}. The antenna is too long.`,
+    };
+  }
+  if (res === null && m.min.index >= m.swr.length - 3) {
+    return {
+      cause: "too_short",
+      text: `Resonant somewhere above ${fmtMHz(m.min.freqHz, 2)} MHz, over ${band.name}. The antenna is too short.`,
+    };
+  }
   const f = res ?? m.min.freqHz;
   if (f < band.startHz) {
     return {

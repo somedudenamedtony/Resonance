@@ -83,11 +83,15 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min }: Props) {
           <circle cx={x(min.freqHz)} cy={y(min.swr)} r="5" fill="var(--trace)" stroke="var(--surface)" stroke-width="2" />
           <text
             x={x(min.freqHz) + (minLabelRight ? 9 : -9)}
-            y={y(min.swr) - 8}
+            y={y(min.swr) - 14}
             text-anchor={minLabelRight ? "start" : "end"}
             font-size="12"
             font-weight="600"
             fill="var(--ink)"
+            stroke="var(--surface)"
+            stroke-width="4"
+            paint-order="stroke"
+            stroke-linejoin="round"
             class="num"
           >
             {min.swr.toFixed(2)} at {mhz(min.freqHz)}

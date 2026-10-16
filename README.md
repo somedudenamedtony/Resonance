@@ -31,7 +31,7 @@ npm run check     # typecheck + test + build (what CI runs)
 Milestones are defined in the spec. Work in progress is tracked here so any contributor
 (human or AI) can pick up where the last one stopped.
 
-### M0 — repo and simulator
+### M0 — repo and simulator ✅ done
 
 Exit: app runs in a desktop browser against the simulator and plots a fake SWR curve.
 
@@ -42,6 +42,19 @@ Exit: app runs in a desktop browser against the simulator and plots a fake SWR c
 - [x] `firmware`: PlatformIO skeleton (builds in M1)
 - [x] `docs`: SPEC.md, PROTOCOL.md
 - [x] CI: typecheck, test, build on push
+
+### Next: M1 — bridge talks
+
+Exit: type `version` in a browser console page, get the NanoVNA's reply over Wi-Fi.
+The plan is in [`firmware/README.md`](firmware/README.md). Start with the USB host CDC
+spike; it is the biggest risk. The app's Connection screen already has a command console
+that sends `raw` messages, so open the app with `?bridge=ws://192.168.4.1/ws` to test it.
+
+### Trying the app
+
+`npm run dev`, open http://localhost:5173 at phone width. Tap the status strip to open
+Connection, where the simulator lets you pick a pretend antenna (well tuned, too long,
+too short, poor match) or unplug the NanoVNA.
 
 ### Hardware
 

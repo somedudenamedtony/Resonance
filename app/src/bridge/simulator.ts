@@ -17,7 +17,7 @@ export interface SimAntennaPreset {
 
 /** Antennas the simulator can pretend to be measuring. */
 export const SIM_ANTENNAS: readonly SimAntennaPreset[] = [
-  { id: "good20", name: "20m dipole, well tuned", antenna: { f0Hz: 14.175e6, r: 52, q: 3.5 } },
+  { id: "good20", name: "20m dipole, well tuned", antenna: { f0Hz: 14.175e6, r: 52, q: 6 } },
   { id: "long20", name: "20m dipole, too long", antenna: { f0Hz: 13.82e6, r: 60, q: 7 } },
   { id: "short40", name: "40m dipole, too short", antenna: { f0Hz: 7.42e6, r: 58, q: 6 } },
   { id: "mismatch20", name: "20m vertical, poor match", antenna: { f0Hz: 14.2e6, r: 16, q: 5 } },

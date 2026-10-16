@@ -25,7 +25,7 @@ export function Verdict({ result, calibrated }: { result: CheckResult; calibrate
 export function Readings({ result }: { result: CheckResult }) {
   const m = result.metrics;
   const mhz = (hz: number) => (hz / 1e6).toFixed(3);
-  const khz = (hz: number) => (hz >= 1e6 ? `${(hz / 1e6).toFixed(2)}M` : `${Math.round(hz / 1e3)}k`);
+  const khz = (hz: number) => `${Math.round(hz / 1e3)}`;
   return (
     <div class="readings">
       <div class="reading">
@@ -41,7 +41,7 @@ export function Readings({ result }: { result: CheckResult }) {
           {m.bw2 ? khz(m.bw2.widthHz) : "0"}
           {m.bw2?.clipped ? "+" : ""}
         </strong>
-        <span>2:1 width, Hz</span>
+        <span>2:1 width, kHz</span>
       </div>
     </div>
   );

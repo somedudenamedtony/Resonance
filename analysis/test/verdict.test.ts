@@ -50,6 +50,12 @@ describe("band verdicts", () => {
     expect(r.causeText).toMatch(/too long/);
   });
 
+  it("says 'somewhere below' when resonance is outside the scan", () => {
+    const r = checkBand(bandSweep({ f0Hz: 13.0e6, r: 50, q: 4 }), band20);
+    expect(r.cause).toBe("too_long");
+    expect(r.causeText).toMatch(/somewhere below/);
+  });
+
   it("poor and too short when resonant above the band", () => {
     const r = checkBand(bandSweep({ f0Hz: 14.6e6, r: 50, q: 12 }), band20);
     expect(r.cause).toBe("too_short");
