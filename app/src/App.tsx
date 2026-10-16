@@ -4,6 +4,7 @@ import { Calibrate } from "./screens/Calibrate";
 import { Check } from "./screens/Check";
 import { Connect } from "./screens/Connect";
 import { Home } from "./screens/Home";
+import { Settings } from "./screens/Settings";
 import { Tune } from "./screens/Tune";
 import { go, route } from "./state";
 
@@ -23,7 +24,7 @@ export function App() {
         {r.name === "tune" && <Tune />}
         {r.name === "antennas" && <Antennas />}
         {r.name === "profile" && <Profile id={r.id} />}
-        {r.name === "settings" && <Soon job="Settings" milestone="M5" />}
+        {r.name === "settings" && <Settings />}
         {r.name === "soon" && <Soon job={r.job} milestone={r.milestone} />}
       </main>
       <nav class="tabbar" aria-label="Main">

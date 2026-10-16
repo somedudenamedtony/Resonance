@@ -5,7 +5,15 @@ import type { DeviceStatus } from "./bridge/protocol";
 import { SimulatedTransport } from "./bridge/simulator";
 import { type Transport, WebSocketTransport } from "./bridge/transport";
 import { calState, loadForm, type SavedCalibration } from "./cal";
-import { type AntennaProfile, DEFAULT_SETTINGS, listProfiles, loadSettings, type Settings } from "./history";
+import {
+  type AntennaProfile,
+  DEFAULT_SETTINGS,
+  listProfiles,
+  loadSettings,
+  saveSettings,
+  type Settings,
+  type Theme,
+} from "./history";
 import { MemoryStore, openStore, type Store } from "./storage";
 
 /**
@@ -80,16 +88,39 @@ export const profiles = signal<AntennaProfile[]>([]);
 /** Antenna the next check is for; null = quick check. */
 export const checkProfileId = signal<string | null>(null);
 
+export function applyTheme(theme: Theme): void {
+  if (typeof document === "undefined") return;
+  if (theme === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", theme);
+}
+
+export async function updateSettings(next: Settings): Promise<void> {
+  await saveSettings(store, next);
+  settings.value = next;
+  applyTheme(next.theme);
+}
+
+/** Forget the active calibration (the record stays in the backup until data is cleared). */
+export async function clearCalibration(): Promise<void> {
+  await store.delete("kv", ACTIVE_CAL_KEY);
+  activeCal.value = null;
+}
+
+export async function reloadFromStore(): Promise<void> {
+  settings.value = await loadSettings(store);
+  applyTheme(settings.value.theme);
+  await refreshProfiles();
+  const pointer = await store.get<{ id: string; value: string }>("kv", ACTIVE_CAL_KEY);
+  activeCal.value = pointer ? ((await store.get<SavedCalibration>("calibrations", pointer.value)) ?? null) : null;
+}
+
 export async function refreshProfiles(): Promise<void> {
   profiles.value = await listProfiles(store);
 }
 
 export async function initState(): Promise<void> {
   store = await openStore();
-  settings.value = await loadSettings(store);
-  await refreshProfiles();
-  const pointer = await store.get<{ id: string; value: string }>("kv", ACTIVE_CAL_KEY);
-  if (pointer) activeCal.value = (await store.get<SavedCalibration>("calibrations", pointer.value)) ?? null;
+  await reloadFromStore();
   setInterval(() => (clock.value = Date.now()), 60_000);
 }
 

@@ -1,0 +1,292 @@
+import { useEffect, useState } from "preact/hooks";
+import { calLabel } from "../components/StatusBar";
+import { exportBackup, importBackup, type Settings as AppSettings, storageUsed, type Theme, type Units } from "../history";
+import { STORES } from "../storage";
+import {
+  activeCal,
+  calStatus,
+  clearCalibration,
+  client,
+  device,
+  go,
+  isSimulator,
+  link,
+  reloadFromStore,
+  settings,
+  store,
+  updateSettings,
+} from "../state";
+
+const APP_VERSION = "0.2.0";
+
+export function Settings() {
+  const s = settings.value;
+  const [good, setGood] = useState(String(s.thresholds.good));
+  const [usable, setUsable] = useState(String(s.thresholds.usable));
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [used, setUsed] = useState<number | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  useEffect(() => {
+    void storageUsed(store).then(setUsed);
+  }, []);
+
+  const save = async (next: AppSettings, done?: string) => {
+    try {
+      await updateSettings(next);
+      if (done) setMessage({ text: done });
+    } catch (e) {
+      setMessage({ text: (e as Error).message, error: true });
+    }
+  };
+
+  const saveLimits = () => {
+    const g = Number(good);
+    const u = Number(usable);
+    if (!(g >= 1 && g <= 5 && u >= g && u <= 10)) {
+      setMessage({ text: "Use a good limit of 1 to 5 and a usable limit at least that high.", error: true });
+      return;
+    }
+    void save({ ...s, thresholds: { good: g, usable: u } }, "SWR limits saved.");
+  };
+
+  const download = async () => {
+    const data = await exportBackup(store);
+    const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `resonance-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setMessage({ text: "Backup downloaded." });
+  };
+
+  const restore = async (file: File) => {
+    try {
+      const counts = await importBackup(store, JSON.parse(await file.text()));
+      await reloadFromStore();
+      setUsed(await storageUsed(store));
+      setMessage({ text: `Restored ${counts.profiles} antennas, ${counts.sweeps} sweeps, ${counts.calibrations} calibrations.` });
+    } catch (e) {
+      setMessage({ text: e instanceof SyntaxError ? "That file isn't valid JSON." : (e as Error).message, error: true });
+    }
+  };
+
+  const clearAll = async () => {
+    for (const name of STORES) await store.clear(name);
+    await reloadFromStore();
+    setUsed(await storageUsed(store));
+    setConfirmClear(false);
+    setMessage({ text: "All data on this phone was cleared." });
+  };
+
+  const d = device.value;
+  const cal = calStatus.value;
+
+  return (
+    <>
+      <div class="flow-head">
+        <h2>Settings</h2>
+      </div>
+
+      {message && (
+        <p class={message.error ? "field-error" : "saved"} role="status">
+          {message.text}
+        </p>
+      )}
+
+      <h3 class="section-title first">Units</h3>
+      <Segmented<Units>
+        label="Units"
+        value={s.units}
+        options={[
+          ["metric", "Meters and cm"],
+          ["imperial", "Feet and inches"],
+        ]}
+        onChange={(units) => void save({ ...s, units })}
+      />
+
+      <h3 class="section-title">Theme</h3>
+      <Segmented<Theme>
+        label="Theme"
+        value={s.theme}
+        options={[
+          ["auto", "Auto"],
+          ["light", "Light"],
+          ["dark", "Dark"],
+          ["sunlight", "Sunlight"],
+        ]}
+        onChange={(theme) => void save({ ...s, theme })}
+      />
+      <p class="muted small">Sunlight is black on white with heavier lines, for using the app outdoors.</p>
+
+      <h3 class="section-title">SWR limits</h3>
+      <div class="two-fields">
+        <label class="field compact">
+          <span>Good at or under</span>
+          <input type="text" inputMode="decimal" value={good} onInput={(e) => setGood((e.target as HTMLInputElement).value)} />
+        </label>
+        <label class="field compact">
+          <span>Usable at or under</span>
+          <input type="text" inputMode="decimal" value={usable} onInput={(e) => setUsable((e.target as HTMLInputElement).value)} />
+        </label>
+      </div>
+      <div class="actions single">
+        <button class="btn" onClick={saveLimits}>
+          Save SWR limits
+        </button>
+      </div>
+
+      <h3 class="section-title">Calibration</h3>
+      <div class="rows">
+        <div class="row">
+          <span>Status</span>
+          <span class="value">{calLabel(cal)}</span>
+        </div>
+        {activeCal.value && (
+          <div class="row">
+            <span>Made</span>
+            <span class="value num">{new Date(activeCal.value.createdAt).toLocaleString()}</span>
+          </div>
+        )}
+        {activeCal.value?.device.model && (
+          <div class="row">
+            <span>On</span>
+            <span class="value">
+              {activeCal.value.device.model}, firmware {activeCal.value.device.firmware}
+            </span>
+          </div>
+        )}
+      </div>
+      <div class="actions">
+        <button class="btn primary" onClick={() => go({ name: "calibrate" })}>
+          Calibrate now
+        </button>
+        <button class="btn" disabled={!activeCal.value} onClick={() => void clearCalibration()}>
+          Forget calibration
+        </button>
+      </div>
+
+      {!isSimulator && <WifiSettings />}
+
+      <h3 class="section-title">Your data</h3>
+      <p class="muted">
+        Antennas, sweeps and calibrations live only on this phone
+        {used !== null ? `, using about ${Math.max(1, Math.round(used / 1024))} KB` : ""}. Download a backup now and then.
+      </p>
+      <div class="actions">
+        <button class="btn" onClick={download}>
+          Download backup
+        </button>
+        <label class="btn file-btn">
+          Restore backup
+          <input
+            type="file"
+            accept="application/json,.json"
+            onChange={(e) => {
+              const f = (e.target as HTMLInputElement).files?.[0];
+              if (f) void restore(f);
+              (e.target as HTMLInputElement).value = "";
+            }}
+          />
+        </label>
+      </div>
+      <div class="actions single">
+        {confirmClear ? (
+          <button class="btn danger" onClick={clearAll}>
+            Erase all antennas, sweeps and calibrations
+          </button>
+        ) : (
+          <button class="btn" onClick={() => setConfirmClear(true)}>
+            Clear all data
+          </button>
+        )}
+      </div>
+
+      <h3 class="section-title">About</h3>
+      <div class="rows">
+        <div class="row">
+          <span>App</span>
+          <span class="value num">Resonance {APP_VERSION}</span>
+        </div>
+        <div class="row">
+          <span>Bridge</span>
+          <span class="value num">{link.value === "open" ? `${d?.bridgeVersion ?? "unknown"}${isSimulator ? " (simulator)" : ""}` : "not connected"}</span>
+        </div>
+        {d?.connected && (
+          <div class="row">
+            <span>NanoVNA</span>
+            <span class="value num">
+              {d.model}, {d.firmware}, {d.maxPoints} points
+            </span>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function WifiSettings() {
+  const [ssid, setSsid] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
+  const send = async (mode: "ap" | "sta") => {
+    if (mode === "sta" && !ssid.trim()) {
+      setStatus({ text: "Enter your home Wi-Fi name.", error: true });
+      return;
+    }
+    try {
+      await client.setWifi(mode, mode === "sta" ? ssid.trim() : undefined, mode === "sta" ? password : undefined);
+      setStatus({
+        text:
+          mode === "sta"
+            ? "Saved. The bridge is restarting and will join your Wi-Fi. Its own Resonance network stays on too."
+            : "Saved. The bridge is restarting as a hotspot only.",
+      });
+    } catch (e) {
+      setStatus({ text: (e as Error).message, error: true });
+    }
+  };
+  return (
+    <>
+      <h3 class="section-title">Bridge Wi-Fi</h3>
+      <p class="muted">
+        The bridge always runs its own Resonance network. It can also join your home Wi-Fi, so you can use it at
+        resonance.local without switching networks.
+      </p>
+      <label class="field">
+        <span>Home Wi-Fi name</span>
+        <input type="text" autocapitalize="off" value={ssid} onInput={(e) => setSsid((e.target as HTMLInputElement).value)} />
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" value={password} onInput={(e) => setPassword((e.target as HTMLInputElement).value)} />
+      </label>
+      {status && (
+        <p class={status.error ? "field-error" : "saved"} role="status">
+          {status.text}
+        </p>
+      )}
+      <div class="actions">
+        <button class="btn" disabled={link.value !== "open"} onClick={() => send("sta")}>
+          Join home Wi-Fi
+        </button>
+        <button class="btn" disabled={link.value !== "open"} onClick={() => send("ap")}>
+          Hotspot only
+        </button>
+      </div>
+    </>
+  );
+}
+
+function Segmented<T extends string>(props: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <div class="segmented" role="radiogroup" aria-label={props.label}>
+      {props.options.map(([v, text]) => (
+        <button key={v} role="radio" aria-checked={v === props.value} class={v === props.value ? "on" : ""} onClick={() => props.onChange(v)}>
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}

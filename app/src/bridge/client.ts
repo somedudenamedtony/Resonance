@@ -58,6 +58,7 @@ export class BridgeClient {
   private nextId = 1;
   private pending: PendingScan | null = null;
   private rawWaiters: Array<(text: string) => void> = [];
+  private okWaiters: Array<{ for: string; resolve: () => void; reject: (e: Error) => void }> = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
@@ -125,6 +126,18 @@ export class BridgeClient {
     this.failPending(new BridgeError("cancelled", "Scan cancelled."));
   }
 
+  /** Ask the bridge to join home Wi-Fi (sta) or stay hotspot-only (ap). It restarts after "ok". */
+  setWifi(mode: "ap" | "sta", ssid?: string, password?: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.transport.send({ v: PROTOCOL_VERSION, type: "wifi.set", mode, ssid, password });
+        this.okWaiters.push({ for: "wifi.set", resolve, reject });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
   raw(command: string): Promise<string> {
     return new Promise((resolve, reject) => {
       try {
@@ -166,6 +179,10 @@ export class BridgeClient {
         break;
       }
       case "error": {
+        if (msg.id === undefined && this.okWaiters.length) {
+          this.okWaiters.shift()!.reject(new BridgeError(msg.code, msg.message));
+          break;
+        }
         const p = this.pending;
         if (p && (msg.id === undefined || msg.id === p.id)) this.failPending(new BridgeError(msg.code, msg.message));
         break;
@@ -173,8 +190,12 @@ export class BridgeClient {
       case "raw.reply":
         this.rawWaiters.shift()?.(msg.text);
         break;
+      case "ok": {
+        const i = this.okWaiters.findIndex((w) => w.for === msg.for);
+        if (i >= 0) this.okWaiters.splice(i, 1)[0]!.resolve();
+        break;
+      }
       case "scan.begin":
-      case "ok":
         break;
     }
   }

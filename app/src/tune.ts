@@ -47,6 +47,8 @@ export interface TuneReading {
 export interface CutLogEntry {
   n: number;
   instruction: string;
+  action: "shorten" | "lengthen";
+  amountM: number;
   /** Resonance after the cut. */
   resultHz: number | null;
 }
@@ -164,7 +166,13 @@ export class TuneSession {
     if (!r || r.instruction.action === "done") return 0;
     const delta = r.instruction.action === "shorten" ? r.instruction.amountM : -r.instruction.amountM;
     if (this.lengthM !== undefined) this.lengthM -= delta;
-    this.log.push({ n: this.log.length + 1, instruction: r.instruction.text, resultHz: null });
+    this.log.push({
+      n: this.log.length + 1,
+      instruction: r.instruction.text,
+      action: r.instruction.action,
+      amountM: r.instruction.amountM,
+      resultHz: null,
+    });
     return delta;
   }
 }

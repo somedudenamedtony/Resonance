@@ -96,7 +96,18 @@ calibration math validated end to end against emulated raw data.
 - [x] Simulator applies cuts; test: too-long 20m dipole reaches resonance in ≤3 cuts
 - [ ] Hardware: tune a real dipole in ≤3 cuts in the field
 
-### Next: M5 — profiles and history
+### M5 — profiles and history ✅ done
+
+- [x] Data layer (`app/src/history.ts`): profiles, saved sweeps, baselines, drift notes
+      (SWR +0.3 or resonance ±1%), settings, JSON backup/restore, units
+- [x] Antennas tab: add antennas, latest verdict per band, Changed badge; detail with
+      latest-vs-baseline overlay, drift note, history, compare any two, make baseline, delete
+- [x] Check: pick an antenna, save to it, instant drift note
+- [x] Settings: units (metric/imperial, used by Tune), SWR limits, themes incl. high-contrast
+      Sunlight, calibration info, bridge home Wi-Fi (`wifi.set`), storage used, backup,
+      restore, clear data, versions
+
+### Next: M6 — coax and advanced
 
 ### Trying the app
 

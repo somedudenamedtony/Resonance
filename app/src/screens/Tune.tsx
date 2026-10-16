@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { type AntennaType, type Band } from "@resonance/analysis";
 import { SimulatedTransport } from "../bridge/simulator";
 import { BAND_ORDER, bandsById } from "../check";
-import { calibration, client, device, go, isSimulator, link } from "../state";
+import { formatLength, parseLength } from "../history";
+import { calibration, client, device, go, isSimulator, link, settings } from "../state";
 import { defaultSetup, type TuneReading, TuneSession, type TuneSetup } from "../tune";
 
 const TYPES: { id: AntennaType; label: string; element: string }[] = [
@@ -28,6 +29,7 @@ function Setup({ onStart }: { onStart: (s: TuneSetup) => void }) {
   const [length, setLength] = useState("");
   const [error, setError] = useState<string | null>(null);
   const element = TYPES.find((t) => t.id === type)!.element;
+  const unitWord = settings.value.units === "imperial" ? "feet" : "meters";
 
   const pickBand = (b: Band) => {
     setBand(b);
@@ -41,9 +43,9 @@ function Setup({ onStart }: { onStart: (s: TuneSetup) => void }) {
       setError(`Enter a target near ${band.name}, between ${(band.startHz / 1e6).toFixed(3)} and ${(band.stopHz / 1e6).toFixed(3)} MHz.`);
       return;
     }
-    const len = length.trim() === "" ? undefined : Number(length);
-    if (len !== undefined && (!Number.isFinite(len) || len <= 0 || len > 200)) {
-      setError("Enter the length in meters, or leave it blank to estimate it.");
+    const len = parseLength(length, settings.value.units);
+    if (length.trim() !== "" && (len === undefined || len <= 0 || len > 200)) {
+      setError(`Enter the length in ${unitWord}, or leave it blank to estimate it.`);
       return;
     }
     onStart({ ...defaultSetup(band, type), targetHz: Math.round(mhz * 1e6), elementLengthM: len });
@@ -81,7 +83,9 @@ function Setup({ onStart }: { onStart: (s: TuneSetup) => void }) {
         <input type="text" inputMode="decimal" value={target} onInput={(e) => (setTarget((e.target as HTMLInputElement).value), setError(null))} />
       </label>
       <label class="field">
-        <span>Length of {element} now, meters (optional)</span>
+        <span>
+          Length of {element} now, {unitWord} (optional)
+        </span>
         <input
           type="text"
           inputMode="decimal"
@@ -189,7 +193,7 @@ function Coach({ setup, onEdit }: { setup: TuneSetup; onEdit: () => void }) {
         </div>
       ) : (
         <>
-          <Instruction reading={r} />
+          <Instruction reading={r} setupType={setup.type} />
           <TuneScale reading={r} targetHz={setup.targetHz} />
           <div class="readings">
             <div class="reading static">
@@ -237,7 +241,7 @@ function Coach({ setup, onEdit }: { setup: TuneSetup; onEdit: () => void }) {
       {isSimulator && <p class="muted small">Simulator: it applies your cuts to the pretend antenna.</p>}
       {session.lengthIsEstimate && r && !session.done && (
         <p class="muted small">
-          Cut sizes assume about {session.elementLengthM.toFixed(2)} m for {TYPES.find((t) => t.id === setup.type)!.element}. Enter
+          Cut sizes assume about {formatLength(session.elementLengthM, settings.value.units)} for {TYPES.find((t) => t.id === setup.type)!.element}. Enter
           the real length in Setup for a more accurate first cut.
         </p>
       )}
@@ -257,7 +261,7 @@ function Coach({ setup, onEdit }: { setup: TuneSetup; onEdit: () => void }) {
           <ol class="cut-log">
             {session.log.map((e) => (
               <li key={e.n}>
-                {e.instruction}
+                {e.action === "shorten" ? "Shortened" : "Lengthened"} {formatLength(e.amountM, settings.value.units)}
                 <span class="muted num">{e.resultHz === null ? ", measuring…" : `, now ${mhz(e.resultHz)} MHz`}</span>
               </li>
             ))}
@@ -268,7 +272,7 @@ function Coach({ setup, onEdit }: { setup: TuneSetup; onEdit: () => void }) {
   );
 }
 
-function Instruction({ reading }: { reading: TuneReading }) {
+function Instruction({ reading, setupType }: { reading: TuneReading; setupType: AntennaType }) {
   const i = reading.instruction;
   if (i.action === "done") {
     return (
@@ -280,17 +284,15 @@ function Instruction({ reading }: { reading: TuneReading }) {
       </section>
     );
   }
-  // "Shorten each leg 4.2 cm (or more)" → verb line + amount line
-  const m = /^(.*?) (\d+(?:\.\d+)? (?:mm|cm|m))( or more)?$/.exec(i.text);
+  const where = TYPES.find((t) => t.id === setupType)?.element ?? "the element";
+  const verb = `${i.action === "shorten" ? "Shorten" : "Lengthen"} ${where}`;
   return (
     <section class="coach" aria-live="polite">
-      <p class="coach-verb">{m ? m[1] : i.text}</p>
-      {m && (
-        <p class="coach-amount num">
-          {m[2]}
-          {m[3] && <span class="coach-more"> or more</span>}
-        </p>
-      )}
+      <p class="coach-verb">{verb}</p>
+      <p class="coach-amount num">
+        {formatLength(i.amountM, settings.value.units)}
+        {reading.bound !== "exact" && <span class="coach-more"> or more</span>}
+      </p>
       {reading.trend && (
         <p class={`coach-trend ${reading.trend}`}>
           {reading.trend === "closer" ? "Getting closer" : reading.trend === "further" ? "Moved away from target" : "No change since last sweep"}
