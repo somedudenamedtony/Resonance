@@ -87,7 +87,16 @@ calibration math validated end to end against emulated raw data.
 - [x] Tests: guided calibration vs simulator and vs the C bridge + emulator
 - [ ] Hardware: verdicts match NanoVNA-Saver within ±0.05 SWR on three antennas
 
-### Next: M4 — Tune (trim coach screen, live re-sweep, cut log)
+### M4 — tune ✅ app done (field test needs hardware)
+
+- [x] Trim coach session (`app/src/tune.ts`): ±15% sweep, resonance or "beyond the edge",
+      one cut instruction, trend, SWR at target, cut log, known-length tracking
+- [x] Tune screen: setup (band, antenna type, target, optional length), big instruction,
+      target scale, live re-sweep every 2 s, cut log
+- [x] Simulator applies cuts; test: too-long 20m dipole reaches resonance in ≤3 cuts
+- [ ] Hardware: tune a real dipole in ≤3 cuts in the field
+
+### Next: M5 — profiles and history
 
 ### Trying the app
 

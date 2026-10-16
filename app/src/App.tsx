@@ -3,6 +3,7 @@ import { Calibrate } from "./screens/Calibrate";
 import { Check } from "./screens/Check";
 import { Connect } from "./screens/Connect";
 import { Home } from "./screens/Home";
+import { Tune } from "./screens/Tune";
 import { go, route } from "./state";
 
 export function App() {
@@ -17,6 +18,7 @@ export function App() {
         {r.name === "check" && <Check />}
         {r.name === "connect" && <Connect />}
         {r.name === "calibrate" && <Calibrate />}
+        {r.name === "tune" && <Tune />}
         {r.name === "soon" && <Soon job={r.job} milestone={r.milestone} />}
       </main>
       <nav class="tabbar" aria-label="Main">

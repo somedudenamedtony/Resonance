@@ -29,6 +29,7 @@ export type Route =
   | { name: "connect" }
   | { name: "check" }
   | { name: "calibrate" }
+  | { name: "tune" }
   | { name: "soon"; job: string; milestone: string };
 
 export const client = new BridgeClient(chooseTransport());

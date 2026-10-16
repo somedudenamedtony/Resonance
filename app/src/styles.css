@@ -728,3 +728,120 @@ input[type="text"] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.section-title.first {
+  margin-top: 4px;
+}
+
+.band.selected {
+  border-color: var(--trace);
+  background: var(--trace-wash);
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segmented button {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.segmented button.on {
+  border-color: var(--trace);
+  background: var(--trace-wash);
+  font-weight: 650;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 15px;
+}
+
+.field-error {
+  margin-top: 8px;
+  color: var(--poor);
+}
+
+.coach {
+  margin-top: 12px;
+  padding: 20px 18px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: center;
+}
+
+.coach.done {
+  border-color: var(--good);
+  background: var(--good-wash);
+}
+
+.coach-verb {
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.coach-amount {
+  margin-top: 4px;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.coach-more {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.coach-sub {
+  margin-top: 6px;
+  font-size: 17px;
+}
+
+.coach-trend {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.coach-trend.closer {
+  color: var(--good);
+}
+
+.coach-trend.further {
+  color: var(--poor);
+}
+
+.coach-trend.same {
+  color: var(--muted);
+}
+
+.chart.scale {
+  padding: 8px 6px 4px;
+}
+
+.reading.static {
+  cursor: default;
+}
+
+.cut-log {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.cut-log li {
+  padding: 4px 0;
+}

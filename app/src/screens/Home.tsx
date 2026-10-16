@@ -18,7 +18,7 @@ export function Home() {
           <strong>Check my antenna</strong>
           <span>Pick a band, get a verdict</span>
         </button>
-        <button class="job" onClick={() => go({ name: "soon", job: "Tune my antenna", milestone: "M4" })}>
+        <button class="job" onClick={() => go({ name: "tune" })}>
           <strong>Tune</strong>
           <span>What to cut</span>
         </button>
