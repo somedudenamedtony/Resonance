@@ -9,3 +9,5 @@ firmware/.pio/
 firmware/.vscode/
 firmware/sdkconfig.*
 !firmware/sdkconfig.defaults
+firmware/build-host/
+firmware/build/
