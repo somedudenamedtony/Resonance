@@ -16,6 +16,14 @@
 static const char *TAG = "wifi";
 static const char *NS = "resonance";
 
+// Copy a C string into a fixed-size Wi-Fi config field (not necessarily NUL-terminated).
+static void copy_field(uint8_t *dst, size_t cap, const char *src)
+{
+    size_t n = strnlen(src, cap);
+    memcpy(dst, src, n);
+    if (n < cap) dst[n] = 0;
+}
+
 static void load_str(nvs_handle_t h, const char *key, char *out, size_t cap)
 {
     size_t len = cap;
@@ -70,9 +78,11 @@ void wifi_start(void)
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     wifi_config_t ap = {0};
-    int n = snprintf((char *)ap.ap.ssid, sizeof ap.ap.ssid, "Resonance-%02X%02X", mac[4], mac[5]);
-    ap.ap.ssid_len = (uint8_t)n;
-    snprintf((char *)ap.ap.password, sizeof ap.ap.password, "%s", ap_pass);
+    char ssid[16];
+    snprintf(ssid, sizeof ssid, "Resonance-%02X%02X", mac[4], mac[5]);
+    copy_field(ap.ap.ssid, sizeof ap.ap.ssid, ssid);
+    ap.ap.ssid_len = (uint8_t)strlen(ssid);
+    copy_field(ap.ap.password, sizeof ap.ap.password, ap_pass);
     ap.ap.channel = 6;
     ap.ap.max_connection = 4;
     ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
@@ -81,15 +91,15 @@ void wifi_start(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap));
     if (use_sta) {
         wifi_config_t sta = {0};
-        snprintf((char *)sta.sta.ssid, sizeof sta.sta.ssid, "%s", sta_ssid);
-        snprintf((char *)sta.sta.password, sizeof sta.sta.password, "%s", sta_pass);
+        copy_field(sta.sta.ssid, sizeof sta.sta.ssid, sta_ssid);
+        copy_field(sta.sta.password, sizeof sta.sta.password, sta_pass);
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta));
     }
     ESP_ERROR_CHECK(esp_wifi_start());
     if (use_sta) esp_wifi_connect();
 
     ESP_LOGI(TAG, "----------------------------------------------");
-    ESP_LOGI(TAG, " Wi-Fi network: %s", (char *)ap.ap.ssid);
+    ESP_LOGI(TAG, " Wi-Fi network: %s", ssid);
     ESP_LOGI(TAG, " Password:      %s", ap_pass);
     ESP_LOGI(TAG, " Then open:     http://192.168.4.1/");
     ESP_LOGI(TAG, "----------------------------------------------");

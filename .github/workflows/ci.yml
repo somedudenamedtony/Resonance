@@ -46,8 +46,8 @@ jobs:
       - name: Report build errors as annotations
         if: failure()
         run: |
-          grep -nE "error:|Error|ERROR|FAILED|undefined reference|No such file|not found|CMake Error" firmware-build.log \
-            | grep -v "Werror" | head -40 | while IFS= read -r line; do
+          grep -nE -A2 "error:|ERROR|FAILED|undefined reference|No such file|CMake Error" firmware-build.log \
+            | head -60 | while IFS= read -r line; do
               echo "::error title=firmware build::${line:0:900}"
             done
           echo '```' >> "$GITHUB_STEP_SUMMARY"; tail -60 firmware-build.log >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
