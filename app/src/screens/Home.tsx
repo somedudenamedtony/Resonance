@@ -1,10 +1,18 @@
-import { go, lastCheck } from "../state";
+import { calLabel } from "../components/StatusBar";
+import { calStatus, device, go, lastCheck } from "../state";
 
 export function Home() {
   const last = lastCheck.value;
+  const cal = calStatus.value;
   return (
     <>
       <h1 class="home-title">What are you working on?</h1>
+      {device.value?.connected && cal.state !== "ok" && (
+        <button class="nudge" onClick={() => go({ name: "calibrate" })}>
+          <strong>{calLabel(cal)}</strong>
+          <span>Calibrate first so verdicts are accurate. Takes about a minute.</span>
+        </button>
+      )}
       <div class="jobs">
         <button class="job primary" onClick={() => go({ name: "check" })}>
           <strong>Check my antenna</strong>
@@ -14,7 +22,7 @@ export function Home() {
           <strong>Tune</strong>
           <span>What to cut</span>
         </button>
-        <button class="job" onClick={() => go({ name: "soon", job: "Calibrate", milestone: "M3" })}>
+        <button class="job" onClick={() => go({ name: "calibrate" })}>
           <strong>Calibrate</strong>
           <span>Open, short, load</span>
         </button>

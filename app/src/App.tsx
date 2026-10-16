@@ -1,4 +1,5 @@
 import { StatusBar } from "./components/StatusBar";
+import { Calibrate } from "./screens/Calibrate";
 import { Check } from "./screens/Check";
 import { Connect } from "./screens/Connect";
 import { Home } from "./screens/Home";
@@ -15,6 +16,7 @@ export function App() {
         {r.name === "home" && <Home />}
         {r.name === "check" && <Check />}
         {r.name === "connect" && <Connect />}
+        {r.name === "calibrate" && <Calibrate />}
         {r.name === "soon" && <Soon job={r.job} milestone={r.milestone} />}
       </main>
       <nav class="tabbar" aria-label="Main">

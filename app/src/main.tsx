@@ -1,8 +1,9 @@
 import { render } from "preact";
 import { App } from "./App";
-import { client } from "./state";
+import { client, initState } from "./state";
 import "./styles.css";
 
+void initState();
 client.start();
 
 // iOS suspends sockets in the background; reconnect when the app comes back.

@@ -10,7 +10,8 @@ import {
 } from "@resonance/analysis";
 import { SwrChart } from "../components/SwrChart";
 import { Readings, Verdict } from "../components/Verdict";
-import { calibrated, client, device, go, lastCheck, link } from "../state";
+import { applyCalibration } from "../cal";
+import { calibration, client, device, go, lastCheck, link } from "../state";
 
 const POINTS = 201;
 
@@ -31,11 +32,18 @@ export function Check() {
     const range = scanRangeFor(band);
     setPhase({ kind: "scanning", band, partial: null, received: 0 });
     try {
-      const sweep = await client.scan({ ...range, points: POINTS }, (p) =>
-        setPhase({ kind: "scanning", band, partial: { ...p.partial }, received: p.received }),
+      const cal = calibration.value;
+      const raw = await client.scan({ ...range, points: POINTS }, (p) =>
+        setPhase({
+          kind: "scanning",
+          band,
+          partial: applyCalibration(cal, { freqHz: [...p.partial.freqHz], s11: [...p.partial.s11] }).sweep,
+          received: p.received,
+        }),
       );
+      const { sweep, calibrated } = applyCalibration(cal, raw);
       const result = checkBand(sweep, band);
-      lastCheck.value = { result, sweep, at: Date.now() };
+      lastCheck.value = { result, sweep, calibrated, at: Date.now() };
       setPhase({ kind: "done", band });
     } catch (e) {
       const code = (e as { code?: string }).code;
@@ -83,7 +91,7 @@ export function Check() {
 
       {phase.kind === "done" && last && (
         <>
-          <Verdict result={last.result} calibrated={calibrated.value} />
+          <Verdict result={last.result} calibrated={last.calibrated} />
           <div class="chart">
             <SwrChart
               {...scanRangeFor(last.result.band)}

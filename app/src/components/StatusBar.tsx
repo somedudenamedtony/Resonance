@@ -1,9 +1,20 @@
-import { calibrated, client, device, go, link } from "../state";
+import { calStatus, device, go, isSimulator, link } from "../state";
+
+export function calLabel(s: ReturnType<typeof calStatus.peek>): string {
+  switch (s.state) {
+    case "none":
+      return "Not calibrated";
+    case "stale":
+      return s.reason === "device" ? "Recalibrate: new device" : "Calibration is old";
+    case "ok":
+      return s.ageDays < 1 ? "Calibrated today" : `Calibrated ${Math.floor(s.ageDays)}d ago`;
+  }
+}
 
 export function StatusBar() {
   const l = link.value;
   const d = device.value;
-  const sim = client.transport.kind === "simulator";
+  const cal = calStatus.value;
 
   let tone: "ok" | "warn" | "bad";
   let text: string;
@@ -15,14 +26,15 @@ export function StatusBar() {
     text = "NanoVNA not detected";
   } else {
     tone = "ok";
-    text = sim ? "Simulated NanoVNA ready" : `${d.model ?? "NanoVNA"} ready`;
+    text = isSimulator ? "Simulated NanoVNA ready" : `${d.model ?? "NanoVNA"} ready`;
   }
+  const ready = l === "open" && !!d?.connected;
 
   return (
-    <button class="status" onClick={() => go({ name: "connect" })} aria-label={`Connection: ${text}. Open connection details.`}>
+    <button class="status" onClick={() => go({ name: "connect" })} aria-label={`Connection: ${text}. ${calLabel(cal)}. Open connection details.`}>
       <span class={`status-dot ${tone}`} aria-hidden="true" />
       <span class="status-text">{text}</span>
-      {l === "open" && d?.connected && !calibrated.value && <span class="status-cal">Not calibrated</span>}
+      {ready && <span class={cal.state === "ok" ? "status-cal ok" : "status-cal"}>{calLabel(cal)}</span>}
     </button>
   );
 }

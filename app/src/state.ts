@@ -1,9 +1,11 @@
-import { signal } from "@preact/signals";
-import type { CheckResult, Sweep } from "@resonance/analysis";
+import { computed, signal } from "@preact/signals";
+import type { Calibration, CheckResult, Sweep } from "@resonance/analysis";
 import { BridgeClient, type LinkState } from "./bridge/client";
 import type { DeviceStatus } from "./bridge/protocol";
 import { SimulatedTransport } from "./bridge/simulator";
 import { type Transport, WebSocketTransport } from "./bridge/transport";
+import { calState, loadForm, type SavedCalibration } from "./cal";
+import { MemoryStore, openStore, type Store } from "./storage";
 
 /**
  * Pick the transport:
@@ -26,16 +28,54 @@ export type Route =
   | { name: "home" }
   | { name: "connect" }
   | { name: "check" }
+  | { name: "calibrate" }
   | { name: "soon"; job: string; milestone: string };
 
 export const client = new BridgeClient(chooseTransport());
+export const isSimulator = client.transport instanceof SimulatedTransport;
 
 export const link = signal<LinkState>(client.link);
 export const device = signal<DeviceStatus | null>(client.device);
 export const route = signal<Route>({ name: "home" });
-export const lastCheck = signal<{ result: CheckResult; sweep: Sweep; at: number } | null>(null);
-/** No calibration flow until M3, so every result is uncalibrated for now. */
-export const calibrated = signal(false);
+
+export interface LastCheck {
+  result: CheckResult;
+  sweep: Sweep;
+  calibrated: boolean;
+  at: number;
+}
+export const lastCheck = signal<LastCheck | null>(null);
+
+// ---- storage and calibration ----
+
+export let store: Store = new MemoryStore();
+export const activeCal = signal<SavedCalibration | null>(null);
+/** Ticks every minute so calibration age stays current. */
+const clock = signal(Date.now());
+
+let cachedCal: { id: string; cal: Calibration } | null = null;
+export const calibration = computed<Calibration | null>(() => {
+  const saved = activeCal.value;
+  if (!saved) return null;
+  if (cachedCal?.id !== saved.id) cachedCal = { id: saved.id, cal: loadForm(saved) };
+  return cachedCal.cal;
+});
+export const calStatus = computed(() => calState(activeCal.value, device.value, clock.value));
+
+const ACTIVE_CAL_KEY = "activeCalibration";
+
+export async function saveCalibration(saved: SavedCalibration): Promise<void> {
+  await store.put("calibrations", saved);
+  await store.put("kv", { id: ACTIVE_CAL_KEY, value: saved.id });
+  activeCal.value = saved;
+}
+
+export async function initState(): Promise<void> {
+  store = await openStore();
+  const pointer = await store.get<{ id: string; value: string }>("kv", ACTIVE_CAL_KEY);
+  if (pointer) activeCal.value = (await store.get<SavedCalibration>("calibrations", pointer.value)) ?? null;
+  setInterval(() => (clock.value = Date.now()), 60_000);
+}
 
 client.onChange = () => {
   link.value = client.link;

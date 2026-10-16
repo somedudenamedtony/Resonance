@@ -1,4 +1,5 @@
 import type { CheckResult } from "@resonance/analysis";
+import { go } from "../state";
 
 const LEVEL_TEXT = { good: "Good", usable: "Usable", poor: "Needs work" } as const;
 const LEVEL_MARK = { good: "✓", usable: "~", poor: "!" } as const;
@@ -14,9 +15,12 @@ export function Verdict({ result, calibrated }: { result: CheckResult; calibrate
       <p class="detail">{result.detail}</p>
       {result.causeText && <p class="cause">{result.causeText}</p>}
       {!calibrated && (
-        <span class="badge" title="Calibration arrives in M3. Readings include the NanoVNA's own errors.">
-          Uncalibrated
-        </span>
+        <p class="uncal">
+          <span class="badge">Uncalibrated</span>
+          <button class="link-btn" onClick={() => go({ name: "calibrate" })}>
+            Calibrate for accurate results
+          </button>
+        </p>
       )}
     </section>
   );
