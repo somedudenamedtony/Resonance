@@ -31,6 +31,8 @@ export interface SimulatorOptions {
   msPer100Points: number;
   /** When false, the simulated NanoVNA is unplugged. */
   deviceConnected: boolean;
+  /** A calibration standard on port 1 instead of the antenna. */
+  standard: "open" | "short" | "load" | null;
 }
 
 export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
@@ -39,6 +41,7 @@ export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
   noise: 0.002,
   msPer100Points: 180,
   deviceConnected: true,
+  standard: null,
 };
 
 /**
@@ -152,7 +155,9 @@ export class SimulatedTransport implements Transport {
     const step = (stopHz - startHz) / (points - 1);
     for (let i = 0; i < points; i++) {
       const f = startHz + i * step;
-      const g = distort(rlcGamma(preset.antenna, f), this.options.errorTerms(f));
+      const std = this.options.standard;
+      const actual = std === "open" ? { re: 1, im: 0 } : std === "short" ? { re: -1, im: 0 } : std === "load" ? { re: 0, im: 0 } : rlcGamma(preset.antenna, f);
+      const g = distort(actual, this.options.errorTerms(f));
       const n = this.options.noise;
       all.push({ freqHz: f, s11re: g.re + this.gauss() * n, s11im: g.im + this.gauss() * n });
     }
