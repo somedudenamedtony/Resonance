@@ -107,7 +107,7 @@ calibration math validated end to end against emulated raw data.
       Sunlight, calibration info, bridge home Wi-Fi (`wifi.set`), storage used, backup,
       restore, clear data, versions
 
-### M6 — coax and advanced (in progress)
+### M6 — coax and advanced ✅ done (on-device update needs hardware)
 
 - [x] Coax analysis: TDR, length (TDR + quarter wave), loss, faults; Touchstone/CSV export
 - [x] Test coax screen: cable type, far end open/antenna, length, loss vs typical, faults,
@@ -116,7 +116,7 @@ calibration math validated end to end against emulated raw data.
       readouts (SWR, RL, R, X, |Z|, Γ, equivalent L or C), Touchstone/CSV download
 - [x] Device screen: `capture` streamed by the bridge (C core streaming mode, 4 KB frames
       of kind 0x03), shown on the Connection screen; C, app and end-to-end tests
-- [ ] Updates over Wi-Fi (firmware and app image)
+- [x] Updates over Wi-Fi: Settings → Update the bridge (firmware `resonance-bridge.bin` or web app `littlefs.bin` from the CI artifact), plus a built-in `/update` recovery page
 
 ### Trying the app
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { calLabel } from "../components/StatusBar";
 import { exportBackup, importBackup, type Settings as AppSettings, storageUsed, type Theme, type Units } from "../history";
+import { detectUpdateTarget, type UpdateTarget } from "../bridge/protocol";
 import { STORES } from "../storage";
 import {
   activeCal,
@@ -169,6 +170,8 @@ export function Settings() {
 
       {!isSimulator && <WifiSettings />}
 
+      <UpdateSettings />
+
       <h3 class="section-title">Your data</h3>
       <p class="muted">
         Antennas, sweeps and calibrations live only on this phone
@@ -275,6 +278,84 @@ function WifiSettings() {
           Hotspot only
         </button>
       </div>
+    </>
+  );
+}
+
+const TARGET_NAME: Record<UpdateTarget, string> = { firmware: "bridge firmware", app: "web app" };
+
+function UpdateSettings() {
+  const [file, setFile] = useState<{ name: string; bytes: Uint8Array; target: UpdateTarget } | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const pick = async (f: File) => {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const target = detectUpdateTarget(bytes);
+    setProgress(null);
+    if (!target) {
+      setFile(null);
+      setStatus({ text: "That file isn't a Resonance update. Use resonance-bridge.bin or littlefs.bin.", error: true });
+      return;
+    }
+    setFile({ name: f.name, bytes, target });
+    setStatus({ text: `${f.name}: ${TARGET_NAME[target]}, ${Math.round(bytes.length / 1024)} KB.` });
+  };
+
+  const install = async () => {
+    if (!file) return;
+    setStatus(null);
+    setProgress(0);
+    try {
+      await client.update(file.target, file.bytes, (sent, total) => setProgress(sent / total));
+      setStatus({
+        text: isSimulator
+          ? "Installed (simulator: nothing restarts)."
+          : "Installed. The bridge is restarting; this page reconnects in a few seconds.",
+      });
+      setFile(null);
+    } catch (e) {
+      setProgress(null);
+      setStatus({ text: (e as Error).message, error: true });
+    }
+  };
+
+  const busy = progress !== null && progress < 1 && !status;
+  return (
+    <>
+      <h3 class="section-title">Update the bridge</h3>
+      <p class="muted">
+        Install a new <b>resonance-bridge.bin</b> (firmware) or <b>littlefs.bin</b> (this app) from a release. If an
+        app update ever goes wrong, open <span class="num">/update</span> on the bridge to try again.
+      </p>
+      <div class="actions">
+        <label class={`btn file-btn${busy ? " disabled" : ""}`}>
+          Choose file
+          <input
+            type="file"
+            accept=".bin,application/octet-stream"
+            disabled={busy}
+            onChange={(e) => {
+              const f = (e.target as HTMLInputElement).files?.[0];
+              if (f) void pick(f);
+              (e.target as HTMLInputElement).value = "";
+            }}
+          />
+        </label>
+        <button class="btn primary" disabled={!file || busy || link.value !== "open"} onClick={() => void install()}>
+          Install
+        </button>
+      </div>
+      {progress !== null && (
+        <div class="meter" role="progressbar" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100}>
+          <div class="meter-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+        </div>
+      )}
+      {status && (
+        <p class={status.error ? "field-error" : "saved"} role="status">
+          {status.text}
+        </p>
+      )}
     </>
   );
 }
