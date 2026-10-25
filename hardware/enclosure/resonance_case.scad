@@ -43,7 +43,7 @@ sh_btn_z = sh_pcb + 1.5; // ★ button center above the PCB bottom
 es_l = 63.5;          // measured, incl. antenna overhang
 es_pcb_l = 57.5;      // PCB alone (antenna sticks out 6 mm, 18.15 wide)
 es_ant_w = 18.15;
-es_w = 28.4;          // measured
+es_w = 28.34;         // measured
 es_pcb = 1.6;
 es_over = 3.6;        // tallest part on top (module / USB-C)
 es_under = headers ? 9.0 : variant == "stack" ? 0 : 1.5;  // stack: the board lies flat in a pocket on the tray
@@ -210,19 +210,17 @@ module wall_button_nub() {
 }
 
 // Stack tray: low walls beside the ESP32 so it drops into a pocket and can't slide.
-pocket_gap = 0.2;     // clearance each side
+pocket_gap = 0.2;     // clearance each side (28.34 board -> 28.74 gap)
 pocket_wall = 1.2;
 pocket_h = es_pcb + 0.8;  // walls stand 0.8 mm above the PCB top
 module esp_pocket() {
-    at_esp() translate([0, 0, -0.4]) {
-        for (y = [-pocket_gap - pocket_wall, es_w + pocket_gap])
-            translate([1, y, 0]) cube([es_pcb_l - 1, pocket_wall, pocket_h + 0.4]);
-        // end stop past the antenna overhang
-        translate([es_l + pocket_gap, (es_w - es_ant_w) / 2, 0]) cube([1.6, es_ant_w, es_pcb + 1.5 + 0.4]);
-        // corner pieces close the gap between the side walls and the end stop
-        for (y = [-pocket_gap - pocket_wall, es_w + pocket_gap])
-            translate([es_pcb_l - 1, y, 0]) cube([2, pocket_wall, pocket_h + 0.4]);
-    }
+    // Walls run from the tray's long edges in to the board, leaving board + 2 x pocket_gap between them.
+    y0 = (IW - es_w) / 2;                    // ESP32 is centered across the tray
+    z0 = tray_z + tray_t - 0.4;
+    for (span = [[fit, y0 - pocket_gap], [y0 + es_w + pocket_gap, IW - fit]])
+        translate([es_overhang + 1, span[0], z0]) cube([es_pcb_l + 1, span[1] - span[0], pocket_h + 0.4]);
+    // end stop past the antenna overhang
+    at_esp() translate([es_l + pocket_gap, (es_w - es_ant_w) / 2, -0.4]) cube([1.6, es_ant_w, es_pcb + 1.5 + 0.4]);
 }
 
 module esp_rails(height) {
