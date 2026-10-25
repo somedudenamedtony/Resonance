@@ -36,6 +36,13 @@ export function Home() {
           <strong>Tune</strong>
           <span>What to cut</span>
         </button>
+        <button class="job" onClick={() => go({ name: "meter" })}>
+          <span class="job-icon">
+            <Icon name="meter" />
+          </span>
+          <strong>SWR meter</strong>
+          <span>Live, for your tuner</span>
+        </button>
         <button class="job" onClick={() => go({ name: "calibrate" })}>
           <span class="job-icon">
             <Icon name="calibrate" />

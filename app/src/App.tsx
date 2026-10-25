@@ -7,6 +7,7 @@ import { Check } from "./screens/Check";
 import { Coax } from "./screens/Coax";
 import { Connect } from "./screens/Connect";
 import { Home } from "./screens/Home";
+import { Meter } from "./screens/Meter";
 import { Settings } from "./screens/Settings";
 import { Tune } from "./screens/Tune";
 import { go, route } from "./state";
@@ -25,6 +26,7 @@ export function App() {
         {r.name === "connect" && <Connect />}
         {r.name === "calibrate" && <Calibrate />}
         {r.name === "tune" && <Tune />}
+        {r.name === "meter" && <Meter />}
         {r.name === "antennas" && <Antennas />}
         {r.name === "profile" && <Profile id={r.id} />}
         {r.name === "settings" && <Settings />}

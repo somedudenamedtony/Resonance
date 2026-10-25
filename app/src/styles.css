@@ -102,6 +102,8 @@
 
 :root[data-theme="sunlight"] .verdict,
 :root[data-theme="sunlight"] .coach,
+:root[data-theme="sunlight"] .meter-face,
+:root[data-theme="sunlight"] .preset,
 :root[data-theme="sunlight"] .chart,
 :root[data-theme="sunlight"] .reading,
 :root[data-theme="sunlight"] .job,
@@ -339,6 +341,12 @@ button {
   gap: 2px;
   cursor: pointer;
   overflow: hidden;
+}
+
+/* An odd tile out at the end spans the row instead of leaving a hole. */
+.job:not(.primary):last-child:nth-child(even) {
+  grid-column: 1 / -1;
+  min-height: 96px;
 }
 
 .job-icon {
@@ -1469,4 +1477,130 @@ input[type="range"] {
 
 .device-screen[hidden] {
   display: none;
+}
+
+/* Live SWR meter */
+.meter-face {
+  margin-top: 12px;
+  padding: 16px 14px 18px;
+  border: 1px solid var(--rule);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.meter-face.good {
+  border-color: var(--good);
+  background: var(--good-wash);
+}
+
+.meter-face.usable {
+  border-color: var(--usable);
+  background: var(--usable-wash);
+}
+
+.meter-face.poor {
+  border-color: var(--poor);
+  background: var(--poor-wash);
+}
+
+.needle {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.needle-hand {
+  transform-box: view-box;
+  transition: transform 0.12s linear;
+}
+
+.meter-swr {
+  margin-top: -6px;
+  font-size: 88px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.meter-face.good .meter-swr {
+  color: var(--good);
+}
+
+.meter-face.usable .meter-swr {
+  color: var(--usable);
+}
+
+.meter-face.poor .meter-swr {
+  color: var(--poor);
+}
+
+.meter-sub {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+input[type="range"] {
+  width: 100%;
+  min-height: var(--tap);
+  accent-color: var(--trace);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .needle-hand {
+    transition: none;
+  }
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.preset {
+  font: inherit;
+  color: inherit;
+  min-height: 60px;
+  padding: 8px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.preset strong {
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.preset span {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.preset.selected {
+  border-color: var(--trace);
+  background: var(--trace-wash);
+}
+
+.freq-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.freq-entry .field {
+  margin: 0;
 }
