@@ -124,6 +124,15 @@ calibration math validated end to end against emulated raw data.
 Connection, where the in-browser simulator lets you pick a pretend antenna or unplug the
 NanoVNA. For the full stack use `npm run emulate` and open the URL it prints.
 
+### Home screen app
+
+On the iPhone, join the bridge's Wi-Fi, open the bridge's address in Safari, tap Share, then
+**Add to Home Screen**. It opens full screen with its own icon (`app/public/manifest.webmanifest`
+and the Apple meta tags in `app/index.html`). The service worker (`app/public/sw.js`) only
+registers in a secure context (HTTPS or localhost), so it runs in dev and preview but not from
+the bridge's plain-HTTP address; the home-screen app works there without it. Icons are rendered
+from `app/public/icon.svg` with `node app/scripts/icons.cjs`.
+
 ### Hardware
 
 - ESP32-S3-DevKitC-1 N16R8. Its **USB** port goes to the NanoVNA; the **UART** port is for
