@@ -51,7 +51,10 @@ es_overhang = 0.8;    // USB-C receptacles stick out past the PCB edge
 es_ports_y = [8.2, 20.2]; // measured: 8 and 20 mm from the edge
 es_port_z = 3.2;      // port center above PCB bottom
 // 3 LEDs 19.75 mm from the port end, 6–11 mm from the edge (measured)
-es_leds = [for (d = [6, 8.5, 11]) [19.75, es_w - d]];
+// y is measured from the GND/TX edge (the right edge with ports toward you, top side up)
+es_leds = [for (d = [6, 8.5, 11]) [19.75, d]];
+es_rgb = [20.3, es_w - 8.9];  // the big RGB LED, near the 3V3 edge (from photo)
+es_light_groups = [es_leds, [es_rgb]];
 
 // Case
 wall = 2.0;
@@ -75,22 +78,26 @@ z_shield = sh_under + 0.5;                       // shield PCB bottom above the 
 cell_top = z_shield + sh_pcb + sh_over;
 tray_t = 1.6;
 tray_z = cell_top + 1.0;                         // stack: tray bottom
-tray_l = 80;                                     // stack: leaves room at the USB-A end for wires
 z_esp = variant == "stack" ? tray_z + tray_t + es_under : z_shield;
 esp_top = z_esp + es_pcb + es_over;
 
-IW = (variant == "slim" ? es_w + 2 * fit + 3 + sh_w + fit : sh_w + 2 * fit) + sh_btn_out;
+// SW1 slide switch on the long edge opposite the button sticks out past the PCB
+sw_out = 2.2;         // ★ clearance for its lever
+sw_x = 90;            // ★ lever center from the USB-C end (from photo; the window is 16 mm wide)
+sw_side = variant == "slim" ? 0 : sw_out;  // slim: the lever points into the gap between boards
+IW = (variant == "slim" ? es_w + 2 * fit + 3 + sh_w + fit : sh_w + 2 * fit) + sh_btn_out + sw_side;
 IL = variant == "stick" ? sh_l + 2 * fit + 4 + es_l + es_overhang : sh_l + 2 * fit;
 esp_port_top = z_esp + es_port_z + plug_h / 2;
 IH = max(max(cell_top, esp_top) + 1.0, esp_port_top + 2.0);  // keep USB openings as closed windows
 
+tray_l = IL - 2 * fit;                           // stack: full length so it can't slide
 OL = IL + 2 * wall;
 OW = IW + 2 * wall;
 OH = floor_t + IH;                                 // base height; the lid sits on top
 
 // Board placements (origin = PCB bottom-left corner of each board, in cavity coordinates)
 // slim puts the ESP32 at the front so the shield's charge-port edge faces the back wall
-module at_shield() { translate([fit, variant == "slim" ? es_w + 2 * fit + 3 : fit, z_shield]) children(); }
+module at_shield() { translate([fit, (variant == "slim" ? es_w + 2 * fit + 3 : fit) + sw_side, z_shield]) children(); }
 
 module at_esp() {
     if (variant == "stack")
@@ -109,6 +116,7 @@ module shield_mock() {
     color("#c9ced4") translate([sh_l - 14, sh_w / 2 - 7, sh_pcb]) cube([14, 14, 7]);      // USB-A
     color("#c9ced4") translate([sh_chg_x - 4.5, sh_w - 7.4, -3.2]) cube([9, 7.4, 3.2]);    // USB-C (bottom)
     color("#9aa0a6") translate([60, 6, -sh_under]) cube([7, 7, sh_under]);                 // metal can
+    color("#e8e8e8") translate([sw_x - 3, -2, sh_pcb]) cube([6, 4, 3]);                    // SW1 slide switch
     color("#e8e8e8") translate([sh_btn_x - 2, sh_w - 2, sh_pcb]) cube([4, 2 + sh_btn_out, 3]);
 }
 
@@ -121,6 +129,7 @@ module esp_mock() {
     color("#b8bec6") translate([es_l - 25.5, (es_w - es_ant_w) / 2, es_pcb]) cube([25.5, es_ant_w, 3.2]);  // module
     for (y = es_ports_y) color("#c9ced4") translate([-es_overhang, y - 4.5, es_pcb]) cube([7.4, 9, 3.2]);
     for (l = es_leds) color("#ff4fa3") translate([l[0] - 0.8, l[1] - 0.6, es_pcb]) cube([1.6, 1.2, 0.6]);
+    color("#f2f2f2") translate([es_rgb[0] - 2.5, es_rgb[1] - 2.5, es_pcb]) cube([5, 5, 1.6]);
 }
 
 // ---------------------------------------------------------------- shapes
@@ -144,7 +153,7 @@ module port_cuts(grow = 0) {
 
 // Groove (base) / bump (lid) positions for the snap fit
 snap_xs = [IL * 0.25, IL * 0.75];
-label_x = variant == "stick" ? OL * 0.3 : OL / 2;
+label_x = variant == "stick" ? OL * 0.3 : variant == "stack" ? OL / 2 + 9 : OL / 2;  // clear the LED windows
 snap_z = OH - lip_h / 2;
 
 module base() {
@@ -158,6 +167,8 @@ module base() {
         // battery gauge: slits in the charge-side wall beside the underside LEDs
         translate([wall, wall, floor_t]) at_shield() for (x = sh_leds_x)
             translate([x - 0.8, sh_w - 1, -sh_under + 1]) cube([1.6, wall + fit + sh_btn_out + 3, 4]);
+        // SW1 window: room for the lever and a way to flip it with a pen
+        if (sw_side > 0) translate([wall + fit + sw_x - 8, -1, floor_t + z_shield + sh_pcb - 0.5]) cube([16, wall + 1 + 0.01, 5]);
         // ON/OFF: a flex tab in the side wall, hinged toward the USB-A end
         translate([0, wall + IW - 1, floor_t + z_shield + sh_btn_z]) wall_button_slot();
         // thumb notch to pry the lid
@@ -179,6 +190,7 @@ module base() {
 }
 
 btn_gx = wall + fit + sh_btn_x;  // button x in base coordinates
+tab_relief = 0.8;
 module wall_button_slot() {
     // Tab stands up from a hinge below the button, so it prints with no overhang:
     // vertical side slots, and the slot over the free end is a bridge.
@@ -187,12 +199,14 @@ module wall_button_slot() {
         translate([btn_gx - hw - s, 0, -down]) cube([2 * (hw + s), wall + 2, down + up + s]);
         translate([btn_gx - hw, -1, -down - 1]) cube([2 * hw, wall + 4, down + up + 1]);
     }
+    // thin the tab to 1.2 mm from the outside so it presses easily (~4x softer than the full wall)
+    translate([btn_gx - hw, 1 + wall - tab_relief, -down + 1.5]) cube([2 * hw, tab_relief + 2, down + up - 1.5]);
 }
 
 module wall_button_nub() {
     // touches the button tip; a raised dot outside so you can find it by feel
     translate([btn_gx, wall + IW + 0.01, floor_t + z_shield + sh_btn_z]) rotate([90, 0, 0]) cylinder(d = 3, h = 0.31);
-    translate([btn_gx, wall + IW + wall - 0.01, floor_t + z_shield + sh_btn_z]) rotate([-90, 0, 0]) cylinder(d1 = 3.5, d2 = 2.6, h = 0.5);
+    translate([btn_gx, wall + IW + wall - tab_relief - 0.01, floor_t + z_shield + sh_btn_z]) rotate([-90, 0, 0]) cylinder(d1 = 3.5, d2 = 2.6, h = 0.5);
 }
 
 module esp_rails(height) {
@@ -253,9 +267,9 @@ module lid() {
         // resonance dip glyph
         translate([label_x, OW / 2 - (variant == "stack" ? 12 : 15), lid_t - 0.6]) linear_extrude(1) dip_glyph();
         // status LED window
-        // status LED window (a slot over all three LEDs)
-        translate([wall, wall, floor_t - OH]) at_esp() hull() for (l = es_leds)
-            translate([l[0], l[1], -50]) cylinder(d = 3.2, h = 100);
+        // status LED windows: one slot over the 3 LEDs, one over the RGB LED
+        for (g = es_light_groups) translate([wall, wall, floor_t - OH]) at_esp() hull() for (l = g)
+            translate([l[0], l[1], -50]) cylinder(d = len(g) > 1 ? 3.2 : 4.5, h = 100);
         // ON/OFF flexure: U-shaped slot around a tongue
     }
 }
@@ -282,10 +296,11 @@ module lid_posts() {
         at_esp() for (x = [es_l * 0.35], y = [1.2, es_w - 1.2])
             translate([x, y, es_pcb + 0.2]) cylinder(d = 2.4, h = IH - (z_esp + es_pcb + 0.2) + 0.5);
         // light pipe over the status LEDs
-        at_esp() translate([0, 0, es_pcb + 1.2]) difference() {
-            hull() for (l = es_leds) translate([l[0], l[1], 0]) cylinder(d = 6, h = IH - (z_esp + es_pcb + 1.2) + 0.5);
-            hull() for (l = es_leds) translate([l[0], l[1], -1]) cylinder(d = 3.2, h = 100);
-        }
+        for (g = es_light_groups) let(top = len(g) > 1 ? 1.2 : 2.2)
+            at_esp() translate([0, 0, es_pcb + top]) difference() {
+                hull() for (l = g) translate([l[0], l[1], 0]) cylinder(d = len(g) > 1 ? 6 : 7.5, h = IH - (z_esp + es_pcb + top) + 0.5);
+                hull() for (l = g) translate([l[0], l[1], -1]) cylinder(d = len(g) > 1 ? 3.2 : 4.5, h = 100);
+            }
     }
 }
 
