@@ -46,7 +46,7 @@ es_ant_w = 18.15;
 es_w = 28.4;          // measured
 es_pcb = 1.6;
 es_over = 3.6;        // tallest part on top (module / USB-C)
-es_under = headers ? 9.0 : 1.5;
+es_under = headers ? 9.0 : variant == "stack" ? 0 : 1.5;  // stack: the board lies flat in a pocket on the tray
 es_overhang = 0.8;    // USB-C receptacles stick out past the PCB edge
 es_ports_y = [8.2, 20.2]; // measured: 8 and 20 mm from the edge
 es_port_z = 3.2;      // port center above PCB bottom
@@ -209,6 +209,22 @@ module wall_button_nub() {
     translate([btn_gx, wall + IW + wall - tab_relief - 0.01, floor_t + z_shield + sh_btn_z]) rotate([-90, 0, 0]) cylinder(d1 = 3.5, d2 = 2.6, h = 0.5);
 }
 
+// Stack tray: low walls beside the ESP32 so it drops into a pocket and can't slide.
+pocket_gap = 0.2;     // clearance each side
+pocket_wall = 1.2;
+pocket_h = es_pcb + 0.8;  // walls stand 0.8 mm above the PCB top
+module esp_pocket() {
+    at_esp() translate([0, 0, -0.4]) {
+        for (y = [-pocket_gap - pocket_wall, es_w + pocket_gap])
+            translate([1, y, 0]) cube([es_pcb_l - 1, pocket_wall, pocket_h + 0.4]);
+        // end stop past the antenna overhang
+        translate([es_l + pocket_gap, (es_w - es_ant_w) / 2, 0]) cube([1.6, es_ant_w, es_pcb + 1.5 + 0.4]);
+        // corner pieces close the gap between the side walls and the end stop
+        for (y = [-pocket_gap - pocket_wall, es_w + pocket_gap])
+            translate([es_pcb_l - 1, y, 0]) cube([2, pocket_wall, pocket_h + 0.4]);
+    }
+}
+
 module esp_rails(height) {
     // sunk 0.4 mm into whatever they stand on, so slicers see one solid
     at_esp() translate([0, 0, -height - 0.4]) {
@@ -233,7 +249,7 @@ module tray() {
     translate([wall, wall, floor_t]) difference() {
         union() {
             translate([fit, fit, tray_z]) cube([tray_l, IW - 2 * fit, tray_t]);
-            esp_rails(es_under);  // at_esp() already puts them on the tray
+            esp_pocket();
         }
         // wire pass-through for 5V/GND
         translate([tray_l - 8, IW - 8, tray_z - 1]) cube([6, 6, tray_t + 2]);

@@ -6,7 +6,7 @@ preview mock-ups, don't print them).
 
 | Variant | Outside (mm) | Ports | Good for |
 |---|---|---|---|
-| stack | 105 × 36 × 44 | ESP32 ports on the end, charge on the side | smallest footprint, bench |
+| stack | 105 × 38 × 43 | ESP32 ports on the end, charge on the side | smallest footprint, bench |
 | slim  | 105 × 68 × 32 | ESP32 ports on the end, charge on the back | velcro to the back of the NanoVNA |
 | stick | 173 × 36 × 32 | ESP32 ports on the end, charge on the side | strap to a mast or tripod leg |
 
