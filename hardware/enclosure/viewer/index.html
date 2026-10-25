@@ -125,10 +125,9 @@
     <div>
       <h3>Measure these before printing</h3>
       <ul>
-        <li>Measured so far: both boards, the cell height, the ports and the ON/OFF button position</li>
-        <li>Still to measure: the ON/OFF button's distance from the long edge</li>
-        <li>Still to measure: the shield's mounting hole centers and diameter</li>
-        <li>Still to measure: where any LEDs sit on either board (for light pipes)</li>
+        <li>Built from your measurements: both boards, cell height, ports, mounting holes, button and LEDs</li>
+        <li>Assumed: M3 mounting holes and the button's height (the tab is 7 mm tall, so close is fine)</li>
+        <li>Set the battery board's slide switch to always-on before closing the case</li>
       </ul>
     </div>
     <div>
@@ -137,7 +136,8 @@
         <li>PLA or PETG, 0.2 mm layers, 3 walls, 15% infill</li>
         <li>Base upright, lid upside down, no supports</li>
         <li>Lid snaps on with 0.3 mm clearance. If it's loose, set <code>fit = 0.2</code></li>
-        <li>ON/OFF is a flex tab in the lid. The status LED glows through a light pipe; print the lid in translucent filament if you want it brighter.</li>
+        <li>ON/OFF is a flex tab in the side wall with a raised dot. The 5 battery LEDs show through slits beside it, and the ESP32's LEDs through a light pipe in the lid.</li>
+        <li>Stack prints as 3 parts: base, tray and lid</li>
         <li>Files: <a href="https://github.com/somedudenamedtony/Resonance/tree/main/hardware/enclosure">hardware/enclosure</a> in the repo (<code>.scad</code> + STLs)</li>
       </ul>
     </div>
@@ -150,19 +150,19 @@
 <script>
 const VARIANTS = {
   stack: {
-    name: "Stack", size: [104.6, 34.0, 44.3], grams: 51,
+    name: "Stack", size: [104.6, 35.8, 44.3], grams: 53,
     blurb: "ESP32 rides on a tray above the battery. Smallest footprint.",
     ports: "OTG + UART on the end, charge on the side", good: "Bench, pocket, drawer",
     parts: ["base", "lid", "tray"],
   },
   slim: {
-    name: "Slim", size: [104.6, 65.7, 32.0], grams: 62,
+    name: "Slim", size: [104.6, 67.5, 32.0], grams: 63,
     blurb: "Boards side by side. Flat enough to velcro onto the back of the NanoVNA.",
     ports: "OTG + UART on the end, charge on the back", good: "Piggyback on the NanoVNA",
     parts: ["base", "lid"],
   },
   stick: {
-    name: "Stick", size: [172.9, 34.0, 32.0], grams: 62,
+    name: "Stick", size: [172.9, 35.8, 32.0], grams: 65,
     blurb: "Boards end to end. Long and narrow, NanoVNA cable out the end.",
     ports: "OTG + UART on the end, charge on the side", good: "Strap to a mast or tripod leg",
     parts: ["base", "lid"],
@@ -171,7 +171,7 @@ const VARIANTS = {
 const COLORS = { base: 0xd9a441, lid: 0xece6da, tray: 0xb9822a, shield: 0x30343a, cell: 0x2f9e6a, esp: 0x3a3f46 };
 const MOCKS = ["shield", "cell", "esp"];
 
-const state = { variant: "slim", lid: "open", boards: true, spin: true };
+const state = { variant: "stack", lid: "open", boards: true, spin: true };
 try { const v = localStorage.getItem("case-variant"); if (VARIANTS[v]) state.variant = v; } catch (e) {}
 if (VARIANTS[location.hash.slice(1)]) state.variant = location.hash.slice(1);
 
