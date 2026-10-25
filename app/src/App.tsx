@@ -1,3 +1,4 @@
+import { Icon } from "./components/Icon";
 import { StatusBar } from "./components/StatusBar";
 import { Advanced } from "./screens/Advanced";
 import { Antennas, Profile } from "./screens/Antennas";
@@ -17,7 +18,7 @@ export function App() {
 
   return (
     <>
-      <main class="shell">
+      <main class="shell" key={r.name}>
         <StatusBar />
         {r.name === "home" && <Home />}
         {r.name === "check" && <Check />}
@@ -34,21 +35,24 @@ export function App() {
       <nav class="tabbar" aria-label="Main">
         <div class="tabbar-inner">
           <button class="tab" aria-current={tab === "Home" ? "page" : undefined} onClick={() => go({ name: "home" })}>
-            Home
+            <Icon name="home" />
+            <span>Home</span>
           </button>
           <button
             class="tab"
             aria-current={tab === "Antennas" ? "page" : undefined}
             onClick={() => go({ name: "antennas" })}
           >
-            Antennas
+            <Icon name="antenna" />
+            <span>Antennas</span>
           </button>
           <button
             class="tab"
             aria-current={tab === "Settings" ? "page" : undefined}
             onClick={() => go({ name: "settings" })}
           >
-            Settings
+            <Icon name="settings" />
+            <span>Settings</span>
           </button>
         </div>
       </nav>

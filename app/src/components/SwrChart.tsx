@@ -36,6 +36,12 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays }: 
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={summary}>
+      <defs>
+        <linearGradient id="swr-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="var(--trace)" stop-opacity="0" />
+          <stop offset="1" stop-color="var(--trace)" stop-opacity="0.16" />
+        </linearGradient>
+      </defs>
       {band && (
         <g>
           <rect
@@ -92,6 +98,14 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays }: 
           <title>{o.label}</title>
         </path>
       ))}
+      {path && freqHz.length > 1 && (
+        <path
+          class="trace-path trace-fill"
+          d={`${path} L${x(Math.min(freqHz[freqHz.length - 1]!, stopHz)).toFixed(1)} ${H - PAD.b} L${x(Math.max(freqHz[0]!, startHz)).toFixed(1)} ${H - PAD.b} Z`}
+          fill="url(#swr-fill)"
+          stroke="none"
+        />
+      )}
       {path && (
         <path class="trace-path" d={path} fill="none" stroke="var(--trace)" stroke-width="2.5" stroke-linejoin="round" />
       )}
