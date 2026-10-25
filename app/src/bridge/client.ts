@@ -11,6 +11,7 @@ import {
   parseServerMessage,
   PROTOCOL_VERSION,
   type ServerMessage,
+  type WifiStatus,
 } from "./protocol";
 import type { Transport } from "./transport";
 
@@ -66,6 +67,8 @@ const APP_VERSION = "0.1.0";
 export class BridgeClient {
   link: LinkState = "closed";
   device: DeviceStatus | null = null;
+  /** Sent by bridge firmware that reports Wi-Fi; stays null with older firmware. */
+  wifi: WifiStatus | null = null;
   onChange?: () => void;
 
   private nextId = 1;
@@ -100,6 +103,7 @@ export class BridgeClient {
     transport.onClose = () => {
       this.link = "closed";
       this.device = null;
+      this.wifi = null;
       this.failPending(new BridgeError("disconnected", "Lost the connection to the bridge."));
       this.failUpdate(new BridgeError("disconnected", "Lost the connection during the update."));
       this.changed();
@@ -260,6 +264,12 @@ export class BridgeClient {
         const { v: _v, type: _t, ...status } = msg;
         this.device = status;
         if (!status.connected) this.failPending(new BridgeError("no_device", "The NanoVNA was disconnected."));
+        this.changed();
+        break;
+      }
+      case "wifi": {
+        const { v: _v, type: _t, ...status } = msg;
+        this.wifi = status;
         this.changed();
         break;
       }

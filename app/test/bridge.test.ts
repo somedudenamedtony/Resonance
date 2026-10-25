@@ -122,4 +122,19 @@ describe("bridge client against the simulator", () => {
     expect(await client.raw("version")).toBe("1.2.40-sim");
     client.stop();
   });
+
+  it("tracks the bridge's Wi-Fi status and forgets it on disconnect", async () => {
+    const { sim, client } = await connected();
+    expect(client.wifi).toBeNull();
+    sim.onText?.(
+      JSON.stringify({ v: 1, type: "wifi", mode: "sta", apSsid: "Resonance-AB12", ssid: "HomeNet", state: "connected", ip: "192.168.1.42", rssi: -61 }),
+    );
+    expect(client.wifi).toEqual({ mode: "sta", apSsid: "Resonance-AB12", ssid: "HomeNet", state: "connected", ip: "192.168.1.42", rssi: -61 });
+    sim.onText?.(JSON.stringify({ v: 1, type: "wifi", mode: "sta", apSsid: "Resonance-AB12", ssid: "HomeNet", state: "failed", reason: "The network rejected the password." }));
+    expect(client.wifi?.state).toBe("failed");
+    expect(client.wifi?.ip).toBeUndefined();
+    sim.onClose?.();
+    expect(client.wifi).toBeNull();
+    client.stop();
+  });
 });

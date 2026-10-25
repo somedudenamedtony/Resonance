@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { calLabel } from "../components/StatusBar";
 import { exportBackup, importBackup, type Settings as AppSettings, storageUsed, type Theme, type Units } from "../history";
-import { detectUpdateTarget, type UpdateTarget } from "../bridge/protocol";
+import { detectUpdateTarget, type UpdateTarget, type WifiStatus } from "../bridge/protocol";
 import { STORES } from "../storage";
 import {
   activeCal,
@@ -16,6 +16,7 @@ import {
   settings,
   store,
   updateSettings,
+  wifi,
 } from "../state";
 
 const APP_VERSION = "0.2.0";
@@ -229,8 +230,79 @@ export function Settings() {
   );
 }
 
+function signalLabel(rssi: number): string {
+  if (rssi >= -60) return "Strong";
+  if (rssi >= -70) return "Good";
+  if (rssi >= -80) return "Weak";
+  return "Very weak";
+}
+
+const WIFI_STATE: Record<NonNullable<WifiStatus["state"]>, { tone: "ok" | "warn" | "bad"; text: string }> = {
+  connected: { tone: "ok", text: "Connected" },
+  connecting: { tone: "warn", text: "Connecting…" },
+  failed: { tone: "bad", text: "Couldn't connect" },
+};
+
+function WifiStatusRows({ w }: { w: WifiStatus }) {
+  const st = w.mode === "sta" && w.state ? WIFI_STATE[w.state] : null;
+  return (
+    <>
+      <div class="rows wifi-status">
+        <div class="row">
+          <span>Bridge network</span>
+          <span class="value">{w.apSsid}</span>
+        </div>
+        <div class="row">
+          <span>Home Wi-Fi</span>
+          <span class="value">{w.mode === "sta" ? w.ssid : "Not set up (hotspot only)"}</span>
+        </div>
+        {st && (
+          <div class="row">
+            <span>Status</span>
+            <span class="value wifi-state">
+              <span class={`status-dot ${st.tone}`} aria-hidden="true" />
+              {st.text}
+            </span>
+          </div>
+        )}
+        {w.state === "connected" && w.ip && (
+          <div class="row">
+            <span>IP address</span>
+            <a class="value num" href={`http://${w.ip}/`}>
+              {w.ip}
+            </a>
+          </div>
+        )}
+        {w.state === "connected" && w.rssi !== undefined && (
+          <div class="row">
+            <span>Signal</span>
+            <span class="value num">
+              {signalLabel(w.rssi)} ({w.rssi} dBm)
+            </span>
+          </div>
+        )}
+      </div>
+      {w.state === "failed" && (
+        <p class="field-error" role="status">
+          {w.reason ?? "The bridge couldn't join your Wi-Fi."} It keeps trying in the background.
+        </p>
+      )}
+      {w.state === "connected" && w.ip && (
+        <p class="muted">
+          On your home Wi-Fi, open <span class="num">http://{w.ip}/</span> to reach the bridge.
+        </p>
+      )}
+    </>
+  );
+}
+
 function WifiSettings() {
+  const w = wifi.value;
   const [ssid, setSsid] = useState("");
+  // Fill in the saved network name once the bridge reports it.
+  useEffect(() => {
+    if (w?.ssid) setSsid((cur) => cur || w.ssid!);
+  }, [w?.ssid]);
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const send = async (mode: "ap" | "sta") => {
@@ -254,9 +326,13 @@ function WifiSettings() {
     <>
       <h3 class="section-title">Bridge Wi-Fi</h3>
       <p class="muted">
-        The bridge always runs its own Resonance network. It can also join your home Wi-Fi, so you can use it at
-        resonance.local without switching networks.
+        The bridge always runs its own Resonance network. It can also join your home Wi-Fi, so you can reach it
+        from your home network without switching networks.
       </p>
+      {w && <WifiStatusRows w={w} />}
+      {!w && link.value === "open" && (
+        <p class="muted">This bridge firmware doesn't report its Wi-Fi status. Update the bridge to see it here.</p>
+      )}
       <label class="field">
         <span>Home Wi-Fi name</span>
         <input type="text" autocapitalize="off" value={ssid} onInput={(e) => setSsid((e.target as HTMLInputElement).value)} />

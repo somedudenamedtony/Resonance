@@ -26,6 +26,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `type` | Fields |
 | --- | --- |
 | `device` | `connected: boolean`, `model?: string`, `firmware?: string`, `maxPoints?: number`, `bridgeVersion: string` |
+| `wifi` | `mode: "ap" \| "sta"`, `apSsid: string`, `ssid?: string`, `state?: "connecting" \| "connected" \| "failed"`, `ip?: string`, `rssi?: number` (dBm), `reason?: string` |
 | `scan.begin` | `id`, `points`, `ports` |
 | `scan.end` | `id`, `durationMs`, `cancelled?: boolean` |
 | `raw.reply` | `command`, `text` |
@@ -36,6 +37,12 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `error` | `code: "no_device" \| "timeout" \| "busy" \| "bad_request" \| "internal"`, `message`, `id?` |
 
 The bridge sends `device` unsolicited whenever the NanoVNA connects or disconnects.
+
+The bridge sends `wifi` after `device` when an app connects or says `hello`, and again whenever
+its Wi-Fi changes (signal strength alone doesn't count). With `mode: "sta"` it is also joining
+home Wi-Fi `ssid`: `state` says how that is going, `ip` and `rssi` are present once connected, and
+`reason` says in plain words why the last attempt failed (it keeps retrying). Older firmware
+never sends `wifi`.
 
 Only one scan runs at a time. A `scan` while one is in flight gets `error` `busy`.
 

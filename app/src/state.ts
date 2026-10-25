@@ -1,7 +1,7 @@
 import { computed, signal } from "@preact/signals";
 import type { Calibration, CheckResult, Sweep } from "@resonance/analysis";
 import { BridgeClient, type LinkState } from "./bridge/client";
-import type { DeviceStatus } from "./bridge/protocol";
+import type { DeviceStatus, WifiStatus } from "./bridge/protocol";
 import { SimulatedTransport } from "./bridge/simulator";
 import { type Transport, WebSocketTransport } from "./bridge/transport";
 import { calState, loadForm, type SavedCalibration } from "./cal";
@@ -51,6 +51,7 @@ export const isSimulator = client.transport instanceof SimulatedTransport;
 
 export const link = signal<LinkState>(client.link);
 export const device = signal<DeviceStatus | null>(client.device);
+export const wifi = signal<WifiStatus | null>(client.wifi);
 export const route = signal<Route>({ name: "home" });
 
 export interface LastCheck {
@@ -129,6 +130,7 @@ export async function initState(): Promise<void> {
 client.onChange = () => {
   link.value = client.link;
   device.value = client.device ? { ...client.device } : null;
+  wifi.value = client.wifi ? { ...client.wifi } : null;
 };
 
 export const go = (r: Route) => {

@@ -729,6 +729,20 @@ button {
   text-align: right;
 }
 
+.wifi-status {
+  margin-bottom: 8px;
+}
+
+.wifi-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+a.value {
+  color: var(--trace);
+}
+
 .section-title {
   margin: 24px 4px 8px;
   font-size: 13px;
@@ -739,7 +753,8 @@ button {
 }
 
 select,
-input[type="text"] {
+input[type="text"],
+input[type="password"] {
   font: inherit;
   width: 100%;
   min-height: var(--tap);

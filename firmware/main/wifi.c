@@ -11,10 +11,15 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
 #include "nvs.h"
 
 static const char *TAG = "wifi";
 static const char *NS = "resonance";
+
+// Written from the event loop, read from the bridge task.
+static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
+static rc_wifi_status_t s_status;
 
 // Copy a C string into a fixed-size Wi-Fi config field (not necessarily NUL-terminated).
 static void copy_field(uint8_t *dst, size_t cap, const char *src)
@@ -42,13 +47,61 @@ static void ensure_ap_password(nvs_handle_t h, char *out, size_t cap)
     nvs_commit(h);
 }
 
+// Plain words for why joining home Wi-Fi failed.
+static void describe_reason(uint8_t reason, char *out, size_t cap)
+{
+    switch (reason) {
+    case WIFI_REASON_NO_AP_FOUND:
+        snprintf(out, cap, "Network not found. Check the name, and that it's 2.4 GHz.");
+        break;
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_AUTH_EXPIRE:
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_MIC_FAILURE:
+        snprintf(out, cap, "The network rejected the password.");
+        break;
+    case WIFI_REASON_BEACON_TIMEOUT:
+        snprintf(out, cap, "Lost the network. The signal may be too weak.");
+        break;
+    case WIFI_REASON_ASSOC_FAIL:
+    case WIFI_REASON_CONNECTION_FAIL:
+        snprintf(out, cap, "The network refused the connection.");
+        break;
+    default:
+        snprintf(out, cap, "Disconnected (reason %u).", (unsigned)reason);
+        break;
+    }
+}
+
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t *e = data;
+        char why[sizeof s_status.reason];
+        describe_reason(e->reason, why, sizeof why);
+        taskENTER_CRITICAL(&s_lock);
+        s_status.state = RC_WIFI_FAILED;
+        s_status.ip[0] = 0;
+        memcpy(s_status.reason, why, sizeof why);
+        taskEXIT_CRITICAL(&s_lock);
+        ESP_LOGW(TAG, "home Wi-Fi: %s", why);
         esp_wifi_connect();  // keep trying; the AP stays up regardless
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = data;
-        ESP_LOGI(TAG, "joined home Wi-Fi as " IPSTR, IP2STR(&e->ip_info.ip));
+        char ip[sizeof s_status.ip];
+        snprintf(ip, sizeof ip, IPSTR, IP2STR(&e->ip_info.ip));
+        taskENTER_CRITICAL(&s_lock);
+        s_status.state = RC_WIFI_CONNECTED;
+        memcpy(s_status.ip, ip, sizeof ip);
+        s_status.reason[0] = 0;
+        taskEXIT_CRITICAL(&s_lock);
+        ESP_LOGI(TAG, "joined home Wi-Fi as %s", ip);
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_LOST_IP) {
+        taskENTER_CRITICAL(&s_lock);
+        if (s_status.state == RC_WIFI_CONNECTED) s_status.state = RC_WIFI_CONNECTING;
+        s_status.ip[0] = 0;
+        taskEXIT_CRITICAL(&s_lock);
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
         ESP_LOGI(TAG, "a phone joined the Resonance network");
     }
@@ -64,6 +117,7 @@ void wifi_start(void)
     ESP_ERROR_CHECK(esp_wifi_init(&init));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_event, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_event, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, on_event, NULL));
 
     nvs_handle_t h;
     ESP_ERROR_CHECK(nvs_open(NS, NVS_READWRITE, &h));
@@ -87,6 +141,12 @@ void wifi_start(void)
     ap.ap.max_connection = 4;
     ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
 
+    taskENTER_CRITICAL(&s_lock);
+    copy_field((uint8_t *)s_status.ap_ssid, sizeof s_status.ap_ssid - 1, ssid);
+    if (use_sta) copy_field((uint8_t *)s_status.ssid, sizeof s_status.ssid - 1, sta_ssid);
+    s_status.state = use_sta ? RC_WIFI_CONNECTING : RC_WIFI_OFF;
+    taskEXIT_CRITICAL(&s_lock);
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(use_sta ? WIFI_MODE_APSTA : WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap));
     if (use_sta) {
@@ -103,6 +163,16 @@ void wifi_start(void)
     ESP_LOGI(TAG, " Password:      %s", ap_pass);
     ESP_LOGI(TAG, " Then open:     http://192.168.4.1/");
     ESP_LOGI(TAG, "----------------------------------------------");
+}
+
+void wifi_get_status(rc_wifi_status_t *out)
+{
+    taskENTER_CRITICAL(&s_lock);
+    *out = s_status;
+    taskEXIT_CRITICAL(&s_lock);
+    out->rssi = 0;
+    wifi_ap_record_t ap;
+    if (out->state == RC_WIFI_CONNECTED && esp_wifi_sta_get_ap_info(&ap) == ESP_OK) out->rssi = ap.rssi;
 }
 
 static void restart_cb(void *arg)

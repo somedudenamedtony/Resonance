@@ -73,6 +73,60 @@ static void send_device(rc_bridge_t *b)
     send_json(b, o);
 }
 
+static const char *wifi_state_name(rc_wifi_state_t s)
+{
+    switch (s) {
+    case RC_WIFI_CONNECTING:
+        return "connecting";
+    case RC_WIFI_CONNECTED:
+        return "connected";
+    case RC_WIFI_FAILED:
+        return "failed";
+    case RC_WIFI_OFF:
+        break;
+    }
+    return "off";
+}
+
+static void send_wifi(rc_bridge_t *b, const rc_wifi_status_t *st)
+{
+    cJSON *o = msg("wifi");
+    bool sta = st->ssid[0] != 0;
+    cJSON_AddStringToObject(o, "mode", sta ? "sta" : "ap");
+    cJSON_AddStringToObject(o, "apSsid", st->ap_ssid);
+    if (sta) {
+        cJSON_AddStringToObject(o, "ssid", st->ssid);
+        cJSON_AddStringToObject(o, "state", wifi_state_name(st->state));
+        if (st->state == RC_WIFI_CONNECTED) {
+            cJSON_AddStringToObject(o, "ip", st->ip);
+            if (st->rssi) cJSON_AddNumberToObject(o, "rssi", st->rssi);
+        }
+        if (st->reason[0] && st->state != RC_WIFI_CONNECTED) cJSON_AddStringToObject(o, "reason", st->reason);
+    }
+    send_json(b, o);
+}
+
+// Ask the platform for the Wi-Fi status; send it if `force`, or if it changed since last sent.
+// Signal strength alone doesn't count as a change, so the app isn't flooded with updates.
+static void poll_wifi(rc_bridge_t *b, bool force)
+{
+    if (!b->io.wifi_status) return;
+    rc_wifi_status_t st;
+    memset(&st, 0, sizeof st);
+    b->io.wifi_status(b->io.user, &st);
+    st.ap_ssid[sizeof st.ap_ssid - 1] = 0;
+    st.ssid[sizeof st.ssid - 1] = 0;
+    st.ip[sizeof st.ip - 1] = 0;
+    st.reason[sizeof st.reason - 1] = 0;
+    const rc_wifi_status_t *w = &b->wifi;
+    bool changed = !b->wifi_sent || st.state != w->state || strcmp(st.ap_ssid, w->ap_ssid) != 0 ||
+                   strcmp(st.ssid, w->ssid) != 0 || strcmp(st.ip, w->ip) != 0 || strcmp(st.reason, w->reason) != 0;
+    b->wifi = st;
+    b->wifi_sent = true;
+    b->wifi_next_ms = b->now + RC_WIFI_POLL_MS;
+    if (force || changed) send_wifi(b, &st);
+}
+
 // ---------- info parsing ----------
 
 static void copy_trimmed(char *dst, size_t cap, const char *src, size_t n)
@@ -193,6 +247,7 @@ void rc_bridge_client_connected(rc_bridge_t *b, uint32_t now_ms)
 {
     b->now = now_ms;
     send_device(b);
+    poll_wifi(b, true);
 }
 
 static void ota_fail(rc_bridge_t *b, const char *code, const char *message);
@@ -205,6 +260,7 @@ void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms)
     }
     rc_shell_tick(&b->shell, now_ms);
     pump(b);
+    if ((int32_t)(now_ms - b->wifi_next_ms) >= 0) poll_wifi(b, false);
 }
 
 // ---------- jobs ----------
@@ -737,6 +793,7 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
         send_error(b, "bad_request", "unsupported protocol version or missing type", -1);
     } else if (strcmp(type, "hello") == 0) {
         send_device(b);
+        poll_wifi(b, true);
     } else if (strcmp(type, "scan") == 0) {
         handle_scan_msg(b, o);
     } else if (strcmp(type, "cancel") == 0) {
