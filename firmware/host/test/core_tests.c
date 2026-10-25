@@ -253,7 +253,16 @@ typedef struct {
     uint32_t ota_len;
     int ota_begins, ota_ends, ota_aborts;
     bool ota_fail_end;
+    rc_wifi_status_t wifi;
+    int wifi_polls;
 } harness_t;
+
+static void h_wifi_status(void *u, rc_wifi_status_t *out)
+{
+    harness_t *h = u;
+    h->wifi_polls++;
+    *out = h->wifi;
+}
 
 static bool h_ota_begin(void *u, const char *target, uint32_t size, char *err, size_t cap)
 {
@@ -705,6 +714,77 @@ static void test_bridge_ota(void)
     h_free(h);
 }
 
+static int count_type(harness_t *h, const char *type)
+{
+    int n = 0;
+    char needle[64];
+    snprintf(needle, sizeof needle, "\"type\":\"%s\"", type);
+    for (int i = 0; i < h->ntexts; i++) n += strstr(h->texts[i], needle) != NULL;
+    return n;
+}
+
+static void test_bridge_wifi_status(void)
+{
+    // Without a wifi_status callback (the host emulator) no wifi message is sent.
+    harness_t *h = h_new(true, 401);
+    rc_bridge_client_connected(h->b, h->now);
+    h_run(h, 3000);
+    CHECK(count_type(h, "wifi") == 0);
+    h_free(h);
+
+    h = h_new(true, 401);
+    rc_bridge_io_t io = h->b->io;
+    io.wifi_status = h_wifi_status;
+    rc_bridge_init(h->b, &io, 0);
+
+    // Hotspot only.
+    snprintf(h->wifi.ap_ssid, sizeof h->wifi.ap_ssid, "Resonance-AB12");
+    rc_bridge_client_connected(h->b, h->now);
+    cJSON *w = h_last(h, "wifi");
+    CHECK(w && strcmp(str(w, "mode"), "ap") == 0 && strcmp(str(w, "apSsid"), "Resonance-AB12") == 0);
+    CHECK(w && !cJSON_GetObjectItem(w, "state") && !cJSON_GetObjectItem(w, "ip"));
+    cJSON_Delete(w);
+
+    // Joining home Wi-Fi, then failing with a reason.
+    snprintf(h->wifi.ssid, sizeof h->wifi.ssid, "HomeNet");
+    h->wifi.state = RC_WIFI_CONNECTING;
+    h_run(h, 1100);
+    w = h_last(h, "wifi");
+    CHECK(w && strcmp(str(w, "mode"), "sta") == 0 && strcmp(str(w, "ssid"), "HomeNet") == 0);
+    CHECK(w && strcmp(str(w, "state"), "connecting") == 0);
+    cJSON_Delete(w);
+    h->wifi.state = RC_WIFI_FAILED;
+    snprintf(h->wifi.reason, sizeof h->wifi.reason, "The network rejected the password.");
+    h_run(h, 1100);
+    w = h_last(h, "wifi");
+    CHECK(w && strcmp(str(w, "state"), "failed") == 0 && strstr(str(w, "reason"), "password"));
+    CHECK(w && !cJSON_GetObjectItem(w, "ip"));
+    cJSON_Delete(w);
+
+    // Connected: IP and signal, no stale reason.
+    h->wifi.state = RC_WIFI_CONNECTED;
+    snprintf(h->wifi.ip, sizeof h->wifi.ip, "192.168.1.42");
+    h->wifi.rssi = -61;
+    h_run(h, 1100);
+    w = h_last(h, "wifi");
+    CHECK(w && strcmp(str(w, "state"), "connected") == 0 && strcmp(str(w, "ip"), "192.168.1.42") == 0);
+    CHECK(w && num(w, "rssi") == -61 && !cJSON_GetObjectItem(w, "reason"));
+    cJSON_Delete(w);
+
+    // Unchanged status (or only the signal moving) isn't re-sent; hello always gets a fresh one.
+    int before = count_type(h, "wifi");
+    h->wifi.rssi = -70;
+    h_run(h, 5000);
+    CHECK(count_type(h, "wifi") == before);
+    CHECK(h->wifi_polls >= 8);
+    h_client(h, "{\"v\":1,\"type\":\"hello\",\"appVersion\":\"t\"}");
+    CHECK(count_type(h, "wifi") == before + 1);
+    w = h_last(h, "wifi");
+    CHECK(w && num(w, "rssi") == -70);
+    cJSON_Delete(w);
+    h_free(h);
+}
+
 int main(void)
 {
     RUN(test_shell_text_response);
@@ -727,6 +807,7 @@ int main(void)
     RUN(test_bridge_raw);
     RUN(test_bridge_capture);
     RUN(test_bridge_ota);
+    RUN(test_bridge_wifi_status);
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

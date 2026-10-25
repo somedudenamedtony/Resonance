@@ -57,6 +57,11 @@ static bool io_wifi_set(void *u, bool sta, const char *ssid, const char *pw)
     return wifi_save_and_restart(sta, ssid, pw);
 }
 
+static void io_wifi_status(void *u, rc_wifi_status_t *out)
+{
+    wifi_get_status(out);
+}
+
 static void io_log(void *u, const char *msg)
 {
     ESP_LOGI(TAG, "%s", msg);
@@ -103,6 +108,7 @@ static void bridge_task(void *arg)
         .send_text = io_send_text,
         .send_binary = io_send_binary,
         .wifi_set = io_wifi_set,
+        .wifi_status = io_wifi_status,
         .log = io_log,
         .ota_begin = ota_begin,
         .ota_write = ota_write,

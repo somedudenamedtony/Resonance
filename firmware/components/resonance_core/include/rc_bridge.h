@@ -21,10 +21,27 @@
 extern "C" {
 #endif
 
-#define RC_BRIDGE_VERSION "0.2.0"
+#define RC_BRIDGE_VERSION "0.3.0"
 #define RC_SHELL_BUF_SIZE 32768
 #define RC_MAX_SCAN_POINTS 10001
 #define RC_MAX_SEGMENT_POINTS 401
+
+// Wi-Fi as the platform sees it, reported to the app in a `wifi` message.
+typedef enum {
+    RC_WIFI_OFF = 0,     // hotspot only, no home Wi-Fi configured
+    RC_WIFI_CONNECTING,  // joining home Wi-Fi (associating or waiting for an address)
+    RC_WIFI_CONNECTED,   // joined, has an IP address
+    RC_WIFI_FAILED,      // the last attempt failed (`reason` says why); still retrying
+} rc_wifi_state_t;
+
+typedef struct {
+    rc_wifi_state_t state;
+    char ap_ssid[33];  // the bridge's own network
+    char ssid[33];     // home Wi-Fi, empty when hotspot only
+    char ip[16];       // address on home Wi-Fi, empty unless connected
+    int8_t rssi;       // dBm, 0 unless connected
+    char reason[64];   // why the last attempt failed, empty otherwise
+} rc_wifi_status_t;
 
 typedef struct {
     void (*serial_write)(void *user, const uint8_t *data, size_t len);
@@ -32,6 +49,8 @@ typedef struct {
     void (*send_binary)(void *user, const uint8_t *data, size_t len);
     // Optional. Return true if the settings were accepted.
     bool (*wifi_set)(void *user, bool sta, const char *ssid, const char *password);
+    // Optional. Fill in the current Wi-Fi status; polled about once a second.
+    void (*wifi_status)(void *user, rc_wifi_status_t *out);
     // Optional log sink.
     void (*log)(void *user, const char *msg);
     // Optional updates over Wi-Fi. `target` is "firmware" or "app" (the LittleFS image).
@@ -112,6 +131,11 @@ typedef struct rc_bridge {
     uint32_t ota_size;
     uint32_t ota_received;
     uint32_t ota_last_ms;
+
+    // Wi-Fi status last sent to the app
+    rc_wifi_status_t wifi;
+    bool wifi_sent;
+    uint32_t wifi_next_ms;
 } rc_bridge_t;
 
 void rc_bridge_init(rc_bridge_t *b, const rc_bridge_io_t *io, uint32_t now_ms);
@@ -135,6 +159,7 @@ void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint1
 #define RC_FRAME_CAPTURE 0x03
 #define RC_FRAME_OTA 0x02
 #define RC_OTA_IDLE_TIMEOUT_MS 30000
+#define RC_WIFI_POLL_MS 1000
 #define RC_OTA_MAX_SIZE (12u * 1024u * 1024u)
 
 #ifdef __cplusplus

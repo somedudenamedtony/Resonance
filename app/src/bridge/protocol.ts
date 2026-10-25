@@ -24,10 +24,27 @@ export interface DeviceStatus {
   bridgeVersion: string;
 }
 
+/** The bridge's Wi-Fi. `mode: "sta"` means it also joins home Wi-Fi (`ssid`). */
+export interface WifiStatus {
+  mode: "ap" | "sta";
+  /** The bridge's own network. */
+  apSsid: string;
+  ssid?: string;
+  /** "failed" means the last attempt failed; the bridge keeps retrying. */
+  state?: "connecting" | "connected" | "failed";
+  /** Address on home Wi-Fi, when connected. */
+  ip?: string;
+  /** Signal strength in dBm, when connected. */
+  rssi?: number;
+  /** Why the last attempt failed. */
+  reason?: string;
+}
+
 export type ErrorCode = "no_device" | "timeout" | "busy" | "bad_request" | "internal";
 
 export type ServerMessage =
   | ({ v: 1; type: "device" } & DeviceStatus)
+  | ({ v: 1; type: "wifi" } & WifiStatus)
   | { v: 1; type: "scan.begin"; id: number; points: number; ports: Ports }
   | { v: 1; type: "scan.end"; id: number; durationMs: number; cancelled?: boolean }
   | { v: 1; type: "raw.reply"; command: string; text: string }
