@@ -185,6 +185,20 @@ describe("app ↔ C bridge ↔ emulated NanoVNA", () => {
     expect(sweep.freqHz).toHaveLength(11);
   });
 
+  it("runs the live SWR meter's tiny scans back to back, on both dialects", async () => {
+    const { MeterSession } = await import("../../app/src/meter");
+    for (const dialect of ["nanovna-d", "classic"] as const) {
+      const { client, bridge } = await setup({ nanovna: { dialect } });
+      const meter = new MeterSession(good20.f0Hz, () => null);
+      for (let i = 0; i < 5; i++) await meter.measure(client);
+      expect(meter.history).toHaveLength(5);
+      expect(meter.reading!.swr).toBeLessThan(1.2);
+      expect(bridge.nanovna.history.filter((h) => h.startsWith("scan "))).toHaveLength(5);
+      client.stop();
+      await bridge.stop();
+    }
+  });
+
   it("rejects bad requests with a clear error", async () => {
     const { client } = await setup();
     await expect(client.scan({ startHz: 2_000_000, stopHz: 1_000_000, points: 11 })).rejects.toMatchObject({

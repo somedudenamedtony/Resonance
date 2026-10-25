@@ -3,6 +3,7 @@
 const PATHS = {
   antenna: "M12 21V9 M8.5 6.5a5 5 0 0 1 7 0 M5.5 3.5a9.2 9.2 0 0 1 13 0 M12 9 7 21 M12 9l5 12 M9 16h6",
   tune: "M4 20 20 4 M15 4h5v5 M9 15l-2-2 M12 12l-2-2 M6 18l-2-2",
+  meter: "M3.5 17a8.5 8.5 0 0 1 17 0 M12 17l4.5-5.5 M6 11l1.4 1.4 M12 8.5V10.5 M18 11l-1.4 1.4",
   calibrate: "M4 7h10 M18 7h2 M4 17h2 M10 17h10 M16 5v4 M8 15v4",
   coax: "M3 12h4 M17 12h4 M7 8h10v8H7z M10 8v8 M14 8v8",
   history: "M3 12a9 9 0 1 0 3-6.7L3 8 M3 3v5h5 M12 7v5l3 2",

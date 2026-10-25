@@ -95,6 +95,8 @@ calibration math validated end to end against emulated raw data.
       target scale, live re-sweep every 2 s, cut log
 - [x] Simulator applies cuts; test: too-long 20m dipole reaches resonance in ≤3 cuts
 - [ ] Hardware: tune a real dipole in ≤3 cuts in the field
+- [x] Live SWR meter for antenna tuners (`app/src/meter.ts`, SWR meter screen): one frequency,
+      tiny 5-point scans back to back, big number + needle, best-so-far, R+jX, recent trace
 
 ### M5 — profiles and history ✅ done
 

@@ -39,6 +39,7 @@ export type Route =
   | { name: "check" }
   | { name: "calibrate" }
   | { name: "tune" }
+  | { name: "meter" }
   | { name: "antennas" }
   | { name: "profile"; id: string }
   | { name: "settings" }
