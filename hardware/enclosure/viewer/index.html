@@ -1,0 +1,296 @@
+<meta charset="utf-8">
+<title>Resonance Bridge Cases</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one column, a big turntable viewer up top, variant picker as a rail of spec cards, print notes below. */
+  :root {
+    --bg: #eceff1;
+    --surface: #ffffff;
+    --ink: #16191d;
+    --muted: #5b636d;
+    --rule: #d3d8dd;
+    --amber: #d9a441;
+    --amber-ink: #8a5d10;
+    --stage: #dfe3e7;
+    --display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #131518; --surface: #1b1e22; --ink: #e9ebee; --muted: #98a1ab; --rule: #2c3137;
+      --amber: #e0ae4f; --amber-ink: #f0c36d; --stage: #1a1d21; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #131518; --surface: #1b1e22; --ink: #e9ebee; --muted: #98a1ab; --rule: #2c3137;
+    --amber: #e0ae4f; --amber-ink: #f0c36d; --stage: #1a1d21; color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); }
+  .wrap {
+    max-width: 980px; margin: 0 auto;
+    padding-block: 20px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid; gap: 20px;
+  }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+  h1 { margin: 0; font: 600 clamp(26px, 5vw, 36px)/1.1 var(--display); letter-spacing: 0.01em; text-wrap: balance; }
+  .sub { margin: 0; color: var(--muted); }
+  .eyebrow { font: 500 11px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber-ink); }
+
+  .stage { position: relative; border-radius: 14px; background: var(--stage); overflow: hidden; aspect-ratio: 16 / 10; max-width: 100%; }
+  @media (max-width: 560px) { .stage { aspect-ratio: 1 / 1; } }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .stage .dims {
+    position: absolute; left: 12px; bottom: 10px; font: 500 12px/1.3 var(--mono); color: var(--muted);
+    font-variant-numeric: tabular-nums; pointer-events: none;
+  }
+  .stage .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font: 13px var(--mono); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 3px; background: var(--surface); }
+  .seg button, .toggle {
+    font: 500 13px/1 var(--body); color: var(--ink); background: none; border: 0; border-radius: 999px;
+    padding: 9px 14px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .toggle { border: 1px solid var(--rule); background: var(--surface); }
+  .toggle[aria-pressed="true"] { border-color: var(--amber); color: var(--amber-ink); }
+  button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  .variants { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 720px) { .variants { grid-template-columns: 1fr; } }
+  .card {
+    text-align: left; font: inherit; color: inherit; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px;
+    display: grid; gap: 8px; align-content: start;
+  }
+  .card[aria-pressed="true"] { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+  .card h2 { margin: 0; font: 600 20px/1.1 var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .card h2 .size { font: 500 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; margin: 0; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+  section h3 { margin: 0 0 8px; font: 600 17px/1.2 var(--display); letter-spacing: 0.02em; }
+  .notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  @media (max-width: 720px) { .notes { grid-template-columns: 1fr; } }
+  .notes ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+  .notes li { min-width: 0; }
+  code { font: 12.5px var(--mono); background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 0 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  a { color: var(--amber-ink); }
+  [hidden] { display: none !important; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Resonance · W7LIT · bridge enclosure</div>
+      <h1>Pick a case</h1>
+    </div>
+    <p class="sub">ESP32-S3 + 18650 shield · snap-fit lid · no supports</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="loading" id="loading">Loading models…</div>
+    <div class="dims" id="dims"></div>
+  </div>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Lid">
+      <button id="v-closed" aria-pressed="false">Closed</button>
+      <button id="v-open" aria-pressed="true">Lid up</button>
+      <button id="v-inside" aria-pressed="false">No lid</button>
+    </div>
+    <button class="toggle" id="t-boards" aria-pressed="true">Show boards</button>
+    <button class="toggle" id="t-spin" aria-pressed="true">Turntable</button>
+  </div>
+  <div class="legend">
+    <span><i style="background:#d9a441"></i>Base</span>
+    <span><i style="background:#ece6da"></i>Lid</span>
+    <span><i style="background:#b9822a"></i>Tray (stack)</span>
+    <span><i style="background:#2f9e6a"></i>18650</span>
+    <span><i style="background:#30343a"></i>Boards (mock-ups)</span>
+  </div>
+
+  <div class="variants" id="variants"></div>
+
+  <section class="notes">
+    <div>
+      <h3>Measure these before printing</h3>
+      <ul>
+        <li>Shield PCB length and width (est. 99 × 30 mm)</li>
+        <li>Shield height to the top of the cell (est. 20 mm above the PCB)</li>
+        <li>Where the USB-C charge port and the ON/OFF button sit</li>
+        <li>ESP32 PCB size (est. 69 × 26 mm) and the two USB-C port centers</li>
+        <li>Whether the ESP32 has pin headers soldered. Leave them off and wire 5V/GND straight to the pads, which keeps every case shorter.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Printing</h3>
+      <ul>
+        <li>PLA or PETG, 0.2 mm layers, 3 walls, 15% infill</li>
+        <li>Base upright, lid upside down, no supports</li>
+        <li>Lid snaps on with 0.3 mm clearance. If it's loose, set <code>fit = 0.2</code></li>
+        <li>ON/OFF is a flex tab in the lid. The status LED glows through a light pipe; print the lid in translucent filament if you want it brighter.</li>
+        <li>Files: <a href="https://github.com/somedudenamedtony/Resonance/tree/main/hardware/enclosure">hardware/enclosure</a> in the repo (<code>.scad</code> + STLs)</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const VARIANTS = {
+  stack: {
+    name: "Stack", size: [103.6, 34.6, 43.4], grams: 50,
+    blurb: "ESP32 rides on a tray above the battery. Smallest footprint; every port is on one end.",
+    ports: "Charge + OTG + UART, one end", good: "Bench, pocket, drawer",
+    parts: ["base", "lid", "tray"],
+  },
+  slim: {
+    name: "Slim", size: [103.6, 63.9, 31.1], grams: 59,
+    blurb: "Boards side by side. Flat enough to velcro onto the back of the NanoVNA.",
+    ports: "Charge + OTG + UART, one end", good: "Piggyback on the NanoVNA",
+    parts: ["base", "lid"],
+  },
+  stick: {
+    name: "Stick", size: [177.4, 34.6, 31.1], grams: 63,
+    blurb: "Boards end to end. Charge port on one end, NanoVNA cable on the other.",
+    ports: "Charge one end, OTG + UART the other", good: "Strap to a mast or tripod leg",
+    parts: ["base", "lid"],
+  },
+};
+const COLORS = { base: 0xd9a441, lid: 0xece6da, tray: 0xb9822a, shield: 0x30343a, cell: 0x2f9e6a, esp: 0x3a3f46 };
+const MOCKS = ["shield", "cell", "esp"];
+
+const state = { variant: "slim", lid: "open", boards: true, spin: true };
+try { const v = localStorage.getItem("case-variant"); if (VARIANTS[v]) state.variant = v; } catch (e) {}
+if (VARIANTS[location.hash.slice(1)]) state.variant = location.hash.slice(1);
+
+// ---- cards
+const rail = document.getElementById("variants");
+for (const [id, v] of Object.entries(VARIANTS)) {
+  const b = document.createElement("button");
+  b.className = "card"; b.id = "card-" + id; b.dataset.id = id;
+  b.innerHTML = `<h2>${v.name}<span class="size">${v.size.map(n => Math.round(n)).join(" × ")} mm</span></h2>
+    <p>${v.blurb}</p>
+    <dl class="facts"><dt>Ports</dt><dd>${v.ports}</dd><dt>Good for</dt><dd>${v.good}</dd><dt>Filament</dt><dd>≈ ${v.grams} g PLA</dd></dl>`;
+  b.addEventListener("click", () => select(id));
+  rail.appendChild(b);
+}
+
+// ---- three.js
+const stage = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.outputEncoding = THREE.sRGBEncoding;
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 1, 5000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.enablePan = false;
+controls.minDistance = 120; controls.maxDistance = 900;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f96, 0.75));
+const key = new THREE.DirectionalLight(0xffffff, 0.85); key.position.set(160, 260, 200); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffffff, 0.35); rim.position.set(-220, 120, -180); scene.add(rim);
+
+const pivot = new THREE.Group(); scene.add(pivot);
+const root = new THREE.Group(); root.rotation.x = -Math.PI / 2; pivot.add(root);  // OpenSCAD is Z-up
+const loader = new THREE.STLLoader();
+const cache = {};
+function load(name) {
+  // STLs ship base64-encoded as .txt (artifacts don't serve .stl)
+  if (!cache[name]) cache[name] = fetch(`models/${name}.txt`).then(r => {
+    if (!r.ok) throw new Error(r.status);
+    return r.text();
+  }).then(b64 => {
+    const bin = atob(b64.trim()); const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return loader.parse(buf.buffer);
+  });
+  return cache[name];
+}
+
+let meshes = {};
+async function show(id) {
+  const v = VARIANTS[id];
+  document.getElementById("loading").hidden = false;
+  const names = [...v.parts, ...MOCKS];
+  const geos = await Promise.all(names.map(p => load(`${id}-${p}`)));
+  while (root.children.length) root.remove(root.children[0]);
+  meshes = {};
+  names.forEach((p, i) => {
+    const g = geos[i]; g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+      color: new THREE.Color(COLORS[p]).convertSRGBToLinear(), roughness: MOCKS.includes(p) ? 0.55 : 0.72, metalness: p === "esp" ? 0.15 : 0.02,
+      transparent: p === "lid", opacity: 1,
+    }));
+    meshes[p] = m; root.add(m);
+  });
+  // center on the box
+  const [L, W, H] = v.size;
+  root.position.set(-L / 2, -H / 2, W / 2);
+  const r = Math.hypot(L, W, H);
+  camera.position.set(r * 1.1, r * 0.85, r * 1.35);
+  controls.target.set(0, 0, 0); controls.update();
+  document.getElementById("dims").textContent = `${v.size.map(n => n.toFixed(1)).join(" × ")} mm outside`;
+  document.getElementById("loading").hidden = true;
+  applyView();
+}
+
+function applyView() {
+  const lid = meshes.lid; if (!lid) return;
+  lid.visible = state.lid !== "inside";
+  lid.position.z = state.lid === "open" ? 28 : 0;
+  lid.material.opacity = state.lid === "closed" ? 1 : 0.55;
+  lid.material.depthWrite = state.lid === "closed";
+  for (const p of MOCKS) if (meshes[p]) meshes[p].visible = state.boards;
+  if (meshes.tray) meshes.tray.visible = true;
+  for (const [k, id] of [["closed", "v-closed"], ["open", "v-open"], ["inside", "v-inside"]])
+    document.getElementById(id).setAttribute("aria-pressed", String(state.lid === k));
+  document.getElementById("t-boards").setAttribute("aria-pressed", String(state.boards));
+  document.getElementById("t-spin").setAttribute("aria-pressed", String(state.spin));
+}
+
+function select(id) {
+  state.variant = id;
+  try { localStorage.setItem("case-variant", id); } catch (e) {}
+  for (const c of rail.children) c.setAttribute("aria-pressed", String(c.dataset.id === id));
+  show(id).catch(() => { document.getElementById("loading").textContent = "Couldn't load the models."; });
+}
+
+document.getElementById("v-closed").onclick = () => { state.lid = "closed"; applyView(); };
+document.getElementById("v-open").onclick = () => { state.lid = "open"; applyView(); };
+document.getElementById("v-inside").onclick = () => { state.lid = "inside"; applyView(); };
+document.getElementById("t-boards").onclick = () => { state.boards = !state.boards; applyView(); };
+document.getElementById("t-spin").onclick = () => { state.spin = !state.spin; applyView(); };
+controls.addEventListener("start", () => { state.spin = false; applyView(); });
+
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (reduce) state.spin = false;
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+resize();
+
+function tick() {
+  if (state.spin) pivot.rotation.y += 0.004;
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+select(state.variant);
+tick();
+</script>
