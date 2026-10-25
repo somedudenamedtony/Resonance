@@ -180,17 +180,19 @@ module base() {
 
 btn_gx = wall + fit + sh_btn_x;  // button x in base coordinates
 module wall_button_slot() {
-    s = 0.8; free = 3; root = 9; hh = 3.5;  // slot width; tab reaches 3 mm past the button, hinge 9 mm the other way
+    // Tab stands up from a hinge below the button, so it prints with no overhang:
+    // vertical side slots, and the slot over the free end is a bridge.
+    s = 0.8; hw = 3.5; up = 3; down = 9;  // slot width, half tab width, tab above / below the button
     difference() {
-        translate([btn_gx - free - s, 0, -hh - s]) cube([free + root + s, wall + 2, 2 * (hh + s)]);
-        translate([btn_gx - free, -1, -hh]) cube([free + root + 2, wall + 4, 2 * hh]);
+        translate([btn_gx - hw - s, 0, -down]) cube([2 * (hw + s), wall + 2, down + up + s]);
+        translate([btn_gx - hw, -1, -down - 1]) cube([2 * hw, wall + 4, down + up + 1]);
     }
 }
 
 module wall_button_nub() {
     // touches the button tip; a raised dot outside so you can find it by feel
     translate([btn_gx, wall + IW + 0.01, floor_t + z_shield + sh_btn_z]) rotate([90, 0, 0]) cylinder(d = 3, h = 0.31);
-    translate([btn_gx, wall + IW + wall - 0.01, floor_t + z_shield + sh_btn_z]) rotate([-90, 0, 0]) cylinder(d1 = 3.5, d2 = 2, h = 0.6);
+    translate([btn_gx, wall + IW + wall - 0.01, floor_t + z_shield + sh_btn_z]) rotate([-90, 0, 0]) cylinder(d1 = 3.5, d2 = 2.6, h = 0.5);
 }
 
 module esp_rails(height) {
