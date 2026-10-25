@@ -103,6 +103,7 @@
 :root[data-theme="sunlight"] .verdict,
 :root[data-theme="sunlight"] .coach,
 :root[data-theme="sunlight"] .meter-face,
+:root[data-theme="sunlight"] .preset,
 :root[data-theme="sunlight"] .chart,
 :root[data-theme="sunlight"] .reading,
 :root[data-theme="sunlight"] .job,
@@ -1538,4 +1539,53 @@ input[type="range"] {
   .needle-hand {
     transition: none;
   }
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.preset {
+  font: inherit;
+  color: inherit;
+  min-height: 60px;
+  padding: 8px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.preset strong {
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.preset span {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.preset.selected {
+  border-color: var(--trace);
+  background: var(--trace-wash);
+}
+
+.freq-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.freq-entry .field {
+  margin: 0;
 }

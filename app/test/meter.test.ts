@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { frequencyGrid, IDENTITY_TERMS, rlcGamma } from "@resonance/analysis";
+import { frequencyGrid, IDENTITY_TERMS, rlcGamma, US_BAND_PLAN } from "@resonance/analysis";
 import { BridgeClient } from "../src/bridge/client";
 import { SimulatedTransport } from "../src/bridge/simulator";
-import { METER_POINTS, meterRange, MeterSession, needleFraction, readMeter } from "../src/meter";
+import { bandOf, METER_POINTS, meterRange, MeterSession, needleFraction, presetsFor, readMeter } from "../src/meter";
 
 async function simClient() {
   const sim = new SimulatedTransport();
@@ -62,5 +62,21 @@ describe("meter against the simulator", () => {
     expect(s.best).toBe(s.reading);
     expect(s.history).toHaveLength(3);
     client.stop();
+  });
+});
+
+describe("meter presets", () => {
+  it("offers FT8 and the band center for every band, all inside the band", () => {
+    for (const band of US_BAND_PLAN.bands) {
+      const ps = presetsFor(band);
+      expect(ps.map((p) => p.label)).toContain("FT8");
+      expect(ps.at(-1)!.label).toBe("Center");
+      for (const p of ps) expect(bandOf(US_BAND_PLAN.bands, p.freqHz)?.id, `${band.id} ${p.label}`).toBe(band.id);
+    }
+  });
+
+  it("uses the usual FT8 dial frequency", () => {
+    const b20 = US_BAND_PLAN.bands.find((b) => b.id === "20m")!;
+    expect(presetsFor(b20).find((p) => p.label === "FT8")!.freqHz).toBe(14_074_000);
   });
 });

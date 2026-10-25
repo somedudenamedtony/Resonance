@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { Band, SwrThresholds } from "@resonance/analysis";
 import { SimulatedTransport } from "../bridge/simulator";
 import { BAND_ORDER, bandsById } from "../check";
-import { type MeterReading, MeterSession, needleFraction } from "../meter";
+import { bandOf, type MeterReading, MeterSession, needleFraction, presetsFor } from "../meter";
 import { calibration, client, device, go, link, settings } from "../state";
 
 /** Pause between scans so the bridge and the screen get a breath. */
@@ -14,36 +14,29 @@ const lastFreqHz = signal<number | null>(null);
 
 export function Meter() {
   const [freqHz, setFreqHz] = useState<number | null>(lastFreqHz.value);
-  if (freqHz === null) {
-    return (
-      <Setup
-        onStart={(hz) => {
-          lastFreqHz.value = hz;
-          setFreqHz(hz);
-        }}
-      />
-    );
-  }
-  return <Live key={freqHz} freqHz={freqHz} onEdit={() => setFreqHz(null)} />;
+  const tuneTo = (hz: number) => {
+    lastFreqHz.value = hz;
+    setFreqHz(hz);
+  };
+  if (freqHz === null) return <Setup onStart={tuneTo} />;
+  return <Live key={freqHz} freqHz={freqHz} onTune={tuneTo} onEdit={() => setFreqHz(null)} />;
 }
+
+const mhzText = (hz: number) => (hz / 1e6).toFixed(hz % 1000 === 0 ? 3 : 4);
 
 function Setup({ onStart }: { onStart: (hz: number) => void }) {
   const bands = bandsById(BAND_ORDER);
-  const [mhz, setMhz] = useState(lastFreqHz.value ? (lastFreqHz.value / 1e6).toFixed(3) : "14.200");
+  const [band, setBand] = useState<Band>((lastFreqHz.value && bandOf(bands, lastFreqHz.value)) || bands[0]!);
+  const [mhz, setMhz] = useState(lastFreqHz.value ? mhzText(lastFreqHz.value) : "");
   const [error, setError] = useState<string | null>(null);
-  const pick = (b: Band) => {
-    setMhz(((b.startHz + b.stopHz) / 2e6).toFixed(3));
-    setError(null);
-  };
   const start = () => {
     const v = Number(mhz.replace(",", "."));
-    if (!Number.isFinite(v) || v < 0.1 || v > 1500) {
-      setError("Enter the frequency you'll transmit on, in MHz, for example 14.200.");
+    if (mhz.trim() === "" || !Number.isFinite(v) || v < 0.1 || v > 1500) {
+      setError("Enter the frequency you'll transmit on, in MHz, for example 14.074.");
       return;
     }
     onStart(Math.round(v * 1e6));
   };
-  const current = Number(mhz) * 1e6;
 
   return (
     <>
@@ -57,31 +50,39 @@ function Setup({ onStart }: { onStart: (hz: number) => void }) {
 
       <h3 class="section-title">Band</h3>
       <div class="bands">
-        {bands.map((b) => {
-          const on = current >= b.startHz && current <= b.stopHz;
-          return (
-            <button key={b.id} class={`band${on ? " selected" : ""}`} aria-pressed={on} onClick={() => pick(b)}>
-              <strong>{b.name}</strong>
-            </button>
-          );
-        })}
+        {bands.map((b) => (
+          <button key={b.id} class={`band${b.id === band.id ? " selected" : ""}`} aria-pressed={b.id === band.id} onClick={() => setBand(b)}>
+            <strong>{b.name}</strong>
+          </button>
+        ))}
       </div>
 
-      <label class="field">
-        <span>Frequency, MHz</span>
-        <input type="text" inputMode="decimal" value={mhz} onInput={(e) => (setMhz((e.target as HTMLInputElement).value), setError(null))} />
-      </label>
+      <h3 class="section-title">Tune to</h3>
+      <Presets band={band} onPick={onStart} />
+
+      <h3 class="section-title">Or enter a frequency</h3>
+      <div class="freq-entry">
+        <label class="field">
+          <span>Frequency, MHz</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="14.074"
+            value={mhz}
+            onInput={(e) => (setMhz((e.target as HTMLInputElement).value), setError(null))}
+            onKeyDown={(e) => e.key === "Enter" && start()}
+          />
+        </label>
+        <button class="btn primary" onClick={start}>
+          Start
+        </button>
+      </div>
       {error && (
         <p class="field-error" role="alert">
           {error}
         </p>
       )}
 
-      <div class="actions single">
-        <button class="btn primary big" onClick={start}>
-          Start meter
-        </button>
-      </div>
       <p class="muted small">
         Connect the NanoVNA where the radio plugs into the tuner. Never transmit into the NanoVNA.
       </p>
@@ -89,7 +90,26 @@ function Setup({ onStart }: { onStart: (hz: number) => void }) {
   );
 }
 
-function Live({ freqHz, onEdit }: { freqHz: number; onEdit: () => void }) {
+/** One button per preset for the band, showing mode and dial frequency. */
+function Presets({ band, current, onPick }: { band: Band; current?: number; onPick: (hz: number) => void }) {
+  return (
+    <div class="presets">
+      {presetsFor(band).map((p) => (
+        <button
+          key={p.label}
+          class={`preset${p.freqHz === current ? " selected" : ""}`}
+          aria-pressed={p.freqHz === current}
+          onClick={() => onPick(p.freqHz)}
+        >
+          <strong>{p.label}</strong>
+          <span class="num">{mhzText(p.freqHz)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Live({ freqHz, onTune, onEdit }: { freqHz: number; onTune: (hz: number) => void; onEdit: () => void }) {
   const session = useRef(new MeterSession(freqHz, () => calibration.value)).current;
   const [, bump] = useState(0);
   const [running, setRunning] = useState(true);
@@ -97,6 +117,7 @@ function Live({ freqHz, onEdit }: { freqHz: number; onEdit: () => void }) {
   const ready = link.value === "open" && !!device.value?.connected;
   const sim = client.transport instanceof SimulatedTransport ? client.transport : null;
   const thresholds = settings.value.thresholds;
+  const band = bandOf(bandsById(BAND_ORDER), freqHz);
 
   useEffect(() => {
     if (!running) return;
@@ -143,7 +164,9 @@ function Live({ freqHz, onEdit }: { freqHz: number; onEdit: () => void }) {
           Close
         </button>
       </div>
-      <p class="muted num">{(freqHz / 1e6).toFixed(3)} MHz</p>
+      <p class="muted num">
+        {mhzText(freqHz)} MHz{band ? `, ${band.name}` : ""}
+      </p>
 
       <section class={`meter-face ${level ?? ""}`} aria-live="off">
         <Needle reading={r} thresholds={thresholds} />
@@ -186,6 +209,13 @@ function Live({ freqHz, onEdit }: { freqHz: number; onEdit: () => void }) {
           Reset best
         </button>
       </div>
+
+      {band && (
+        <>
+          <h3 class="section-title">Switch to</h3>
+          <Presets band={band} current={freqHz} onPick={onTune} />
+        </>
+      )}
 
       {sim && <SimTuner sim={sim} freqHz={freqHz} />}
 

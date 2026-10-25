@@ -2,7 +2,7 @@
  * Live SWR meter: SWR at one frequency, re-measured as fast as the NanoVNA allows, for
  * adjusting an antenna tuner. UI-free so tests can drive it.
  */
-import { type Calibration, type Complex, impedance, returnLoss, swr, type Sweep } from "@resonance/analysis";
+import { type Band, bandCenterHz, type Calibration, type Complex, impedance, returnLoss, swr, type Sweep } from "@resonance/analysis";
 import type { BridgeClient } from "./bridge/client";
 import { applyCalibration } from "./cal";
 
@@ -92,3 +92,35 @@ export class MeterSession {
   }
 }
 
+
+export interface MeterPreset {
+  label: string;
+  freqHz: number;
+}
+
+const k = (v: number) => Math.round(v * 1000);
+/** Common US dial frequencies, kHz. Digital modes are the usual USB dial frequencies. */
+const PRESETS_KHZ: Record<string, [string, number][]> = {
+  "160m": [["FT8", 1840], ["CW", 1810], ["SSB", 1900]],
+  "80m": [["FT8", 3573], ["FT4", 3575], ["CW", 3530], ["SSB", 3850]],
+  "60m": [["FT8", 5357], ["Ch 1", 5332], ["Ch 5", 5405]],
+  "40m": [["FT8", 7074], ["FT4", 7047.5], ["CW", 7030], ["SSB", 7200]],
+  "30m": [["FT8", 10136], ["FT4", 10140], ["CW", 10110]],
+  "20m": [["FT8", 14074], ["FT4", 14080], ["CW", 14030], ["SSB", 14250]],
+  "17m": [["FT8", 18100], ["FT4", 18104], ["CW", 18080], ["SSB", 18140]],
+  "15m": [["FT8", 21074], ["FT4", 21140], ["CW", 21030], ["SSB", 21300]],
+  "12m": [["FT8", 24915], ["FT4", 24919], ["CW", 24900], ["SSB", 24950]],
+  "10m": [["FT8", 28074], ["FT4", 28180], ["CW", 28030], ["SSB", 28400]],
+  "6m": [["FT8", 50313], ["FT4", 50318], ["CW", 50090], ["SSB", 50125]],
+  "2m": [["FT8", 144174], ["SSB", 144200], ["FM", 146520]],
+};
+
+/** Presets for a band: its mode frequencies, then the band center. */
+export function presetsFor(band: Band): MeterPreset[] {
+  const modes = (PRESETS_KHZ[band.id] ?? []).map(([label, khz]) => ({ label, freqHz: k(khz) }));
+  return [...modes, { label: "Center", freqHz: bandCenterHz(band) }];
+}
+
+export function bandOf(bands: readonly Band[], freqHz: number): Band | undefined {
+  return bands.find((b) => freqHz >= b.startHz && freqHz <= b.stopHz);
+}
