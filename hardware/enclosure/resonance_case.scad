@@ -314,7 +314,7 @@ module lid_posts() {
             at_shield() translate([sh_l / 2 - 8, sh_w / 2, sh_pcb + sh_over + 0.4])
                 cylinder(d = 5, h = IH - (z_shield + sh_pcb + sh_over + 0.4) + 0.5);
         }
-        at_esp() for (x = [es_l * 0.35], y = [1.2, es_w - 1.2])
+        at_esp() for (x = [12, 50], y = [1.2, es_w - 1.2])  // 4 hold-downs on the PCB edges, clear of the module and LEDs
             translate([x, y, es_pcb + 0.2]) cylinder(d = 2.4, h = IH - (z_esp + es_pcb + 0.2) + 0.5);
         // light pipe over the status LEDs
         for (g = es_light_groups) let(top = len(g) > 1 ? 1.2 : 2.2)
