@@ -30,6 +30,8 @@ sh_hole_dy = 24.5;    // measured: hole spacing across
 sh_hole_x0 = (sh_l - sh_hole_dx) / 2;
 sh_hole_y0 = (sh_w - sh_hole_dy) / 2;
 sh_holes = [for (x = [sh_hole_x0, sh_hole_x0 + sh_hole_dx], y = [sh_hole_y0, sh_hole_y0 + sh_hole_dy]) [x, y]];
+usba_w = 13.1;        // USB-A receptacle (standard size); the opening adds room for the plug
+usba_h = 5.7;
 sh_hole_d = 3.0;      // ★ assumed M3 holes
 // 5 battery-level LEDs on the underside: 35 mm from the USB-A end, then every 3.5 mm toward it
 sh_leds_x = [for (d = [35 : -3.5 : 20.9]) sh_l - d];
@@ -167,6 +169,10 @@ module base() {
         // battery gauge: slits in the charge-side wall beside the underside LEDs
         translate([wall, wall, floor_t]) at_shield() for (x = sh_leds_x)
             translate([x - 0.8, sh_w - 1, -sh_under + 1]) cube([1.6, wall + fit + sh_btn_out + 3, 4]);
+        // USB-A opening on the shield's far end (centered, on top of the PCB)
+        translate([wall + fit + sh_l - 2, wall + fit + sw_side + sh_w / 2, floor_t + z_shield + sh_pcb + usba_h / 2])
+            rotate([0, 90, 0]) linear_extrude(wall + fit + 6)
+                offset(r = 1.5) square([usba_h + 3 - 3, usba_w + 3 - 3], center = true);
         // SW1 window: room for the lever and a way to flip it with a pen
         if (sw_side > 0) translate([wall + fit + sw_x - 8, -1, floor_t + z_shield + sh_pcb - 0.5]) cube([16, wall + 1 + 0.01, 5]);
         // ON/OFF: a flex tab in the side wall, hinged toward the USB-A end
@@ -212,6 +218,7 @@ module wall_button_nub() {
 // Stack tray: low walls beside the ESP32 so it drops into a pocket and can't slide.
 pocket_gap = 0.2;     // clearance each side (28.34 board -> 28.74 gap)
 pocket_wall = 1.2;
+end_stop_in = 0.4;    // first print was a little loose lengthwise
 pocket_h = es_pcb + 0.8;  // walls stand 0.8 mm above the PCB top
 module esp_pocket() {
     // Walls run from the tray's long edges in to the board, leaving board + 2 x pocket_gap between them.
@@ -220,7 +227,7 @@ module esp_pocket() {
     for (span = [[fit, y0 - pocket_gap], [y0 + es_w + pocket_gap, IW - fit]])
         translate([es_overhang + 1, span[0], z0]) cube([es_pcb_l + 1, span[1] - span[0], pocket_h + 0.4]);
     // end stop past the antenna overhang
-    at_esp() translate([es_l + pocket_gap, (es_w - es_ant_w) / 2, -0.4]) cube([1.6, es_ant_w, es_pcb + 1.5 + 0.4]);
+    at_esp() translate([es_l + pocket_gap - end_stop_in, (es_w - es_ant_w) / 2, -0.4]) cube([1.6, es_ant_w, es_pcb + 1.5 + 0.4]);
 }
 
 module esp_rails(height) {
@@ -246,7 +253,7 @@ module ledge(dir) {
 module tray() {
     translate([wall, wall, floor_t]) difference() {
         union() {
-            translate([fit, fit, tray_z]) cube([tray_l, IW - 2 * fit, tray_t]);
+            translate([fit, fit, tray_z]) rrect(tray_l, IW - 2 * fit, tray_t, corner_r - 1);  // rounded to match the box
             esp_pocket();
         }
         // wire pass-through for 5V/GND
