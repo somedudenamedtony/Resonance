@@ -166,9 +166,9 @@ module base() {
     wall_button_nub();
     translate([wall, wall, floor_t]) {
         // shield standoffs with locating pins
-        at_shield() for (h = sh_holes) translate([h[0], h[1], -z_shield]) {
-            cylinder(d = 6, h = z_shield);
-            cylinder(d = sh_hole_d - 0.4, h = z_shield + sh_pcb + 1.2);
+        at_shield() for (h = sh_holes) translate([h[0], h[1], -z_shield - 0.4]) {
+            cylinder(d = 6, h = z_shield + 0.4);
+            cylinder(d = sh_hole_d - 0.4, h = z_shield + 0.4 + sh_pcb + 1.2);
         }
         // ESP32 rails (slim/stick: from the floor; stack: on the tray)
         if (variant != "stack") esp_rails(z_esp);
@@ -194,11 +194,12 @@ module wall_button_nub() {
 }
 
 module esp_rails(height) {
-    at_esp() translate([0, 0, -height]) {
-        translate([6, -0.5, 0]) cube([es_pcb_l - 8, 2.5, height]);
-        translate([6, es_w - 2, 0]) cube([es_pcb_l - 8, 2.5, height]);
+    // sunk 0.4 mm into whatever they stand on, so slicers see one solid
+    at_esp() translate([0, 0, -height - 0.4]) {
+        translate([6, -0.5, 0]) cube([es_pcb_l - 8, 2.5, height + 0.4]);
+        translate([6, es_w - 2, 0]) cube([es_pcb_l - 8, 2.5, height + 0.4]);
         // end stop behind the antenna end keeps the ports pressed to the wall
-        translate([es_l + 0.2, (es_w - es_ant_w) / 2, 0]) cube([1.6, es_ant_w, height + es_pcb + 1]);
+        translate([es_l + 0.2, (es_w - es_ant_w) / 2, 0]) cube([1.6, es_ant_w, height + 0.4 + es_pcb + 1]);
     }
 }
 
@@ -216,7 +217,7 @@ module tray() {
     translate([wall, wall, floor_t]) difference() {
         union() {
             translate([fit, fit, tray_z]) cube([tray_l, IW - 2 * fit, tray_t]);
-            translate([0, 0, tray_z + tray_t]) esp_rails(es_under);
+            esp_rails(es_under);  // at_esp() already puts them on the tray
         }
         // wire pass-through for 5V/GND
         translate([tray_l - 8, IW - 8, tray_z - 1]) cube([6, 6, tray_t + 2]);
@@ -274,13 +275,13 @@ module lid_posts() {
         // hold-downs
         if (variant != "stack") {
             at_shield() translate([sh_l / 2 - 8, sh_w / 2, sh_pcb + sh_over + 0.4])
-                cylinder(d = 5, h = IH - (z_shield + sh_pcb + sh_over + 0.4));
+                cylinder(d = 5, h = IH - (z_shield + sh_pcb + sh_over + 0.4) + 0.5);
         }
         at_esp() for (x = [es_l * 0.35], y = [1.2, es_w - 1.2])
-            translate([x, y, es_pcb + 0.2]) cylinder(d = 2.4, h = IH - (z_esp + es_pcb + 0.2));
+            translate([x, y, es_pcb + 0.2]) cylinder(d = 2.4, h = IH - (z_esp + es_pcb + 0.2) + 0.5);
         // light pipe over the status LEDs
         at_esp() translate([0, 0, es_pcb + 1.2]) difference() {
-            hull() for (l = es_leds) translate([l[0], l[1], 0]) cylinder(d = 6, h = IH - (z_esp + es_pcb + 1.2));
+            hull() for (l = es_leds) translate([l[0], l[1], 0]) cylinder(d = 6, h = IH - (z_esp + es_pcb + 1.2) + 0.5);
             hull() for (l = es_leds) translate([l[0], l[1], -1]) cylinder(d = 3.2, h = 100);
         }
     }
