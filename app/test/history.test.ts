@@ -88,16 +88,16 @@ describe("settings and backup", () => {
   it("validates thresholds", async () => {
     const store = new MemoryStore();
     expect((await loadSettings(store)).thresholds).toEqual({ good: 1.5, usable: 2 });
-    await expect(saveSettings(store, { units: "metric", theme: "auto", thresholds: { good: 2, usable: 1.5 } })).rejects.toThrow();
-    await saveSettings(store, { units: "imperial", theme: "sunlight", thresholds: { good: 1.3, usable: 1.8 } });
-    expect(await loadSettings(store)).toMatchObject({ units: "imperial", theme: "sunlight" });
+    await expect(saveSettings(store, { units: "metric", theme: "auto", thresholds: { good: 2, usable: 1.5 }, modes: [], introSeen: false })).rejects.toThrow();
+    await saveSettings(store, { units: "imperial", theme: "sunlight", thresholds: { good: 1.3, usable: 1.8 }, modes: ["cw"], introSeen: true });
+    expect(await loadSettings(store)).toMatchObject({ units: "imperial", theme: "sunlight", modes: ["cw"], introSeen: true });
   });
 
   it("exports and imports everything", async () => {
     const a = new MemoryStore();
     const p = await createProfile(a, { name: "Vertical", type: "vertical", bands: ["20m"] });
     await saveCheck(a, check("20m", 14.2e6), p.id);
-    await saveSettings(a, { units: "imperial", theme: "dark", thresholds: { good: 1.5, usable: 2 } });
+    await saveSettings(a, { units: "imperial", theme: "dark", thresholds: { good: 1.5, usable: 2 }, modes: [], introSeen: true });
     const backup = JSON.parse(JSON.stringify(await exportBackup(a)));
 
     const b = new MemoryStore();

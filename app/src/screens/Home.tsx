@@ -1,6 +1,7 @@
 import { Icon, Logo } from "../components/Icon";
 import { calLabel } from "../components/StatusBar";
-import { calStatus, device, go, lastCheck } from "../state";
+import { Intro } from "../components/Intro";
+import { calStatus, device, go, lastCheck, settings, settingsLoaded } from "../state";
 
 export function Home() {
   const last = lastCheck.value;
@@ -11,6 +12,7 @@ export function Home() {
         <Logo />
         <span>Resonance</span>
       </header>
+      {settingsLoaded.value && !settings.value.introSeen && <Intro />}
       <h1 class="home-title">What are you working on?</h1>
       {device.value?.connected && cal.state !== "ok" && (
         <button class="nudge" onClick={() => go({ name: "calibrate" })}>
@@ -63,6 +65,13 @@ export function Home() {
           </span>
           <strong>Antennas</strong>
           <span>History and changes</span>
+        </button>
+        <button class="job" onClick={() => go({ name: "learn" })}>
+          <span class="job-icon">
+            <Icon name="learn" />
+          </span>
+          <strong>Learn</strong>
+          <span>What it all means</span>
         </button>
       </div>
       {last && (

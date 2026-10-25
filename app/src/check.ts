@@ -4,7 +4,9 @@ import {
   type Calibration,
   checkBand,
   findBand,
+  type OperatingMode,
   scanRangeFor,
+  segmentFor,
   type Sweep,
   type SwrThresholds,
   US_BAND_PLAN,
@@ -30,12 +32,19 @@ export async function checkOneBand(
   cal: Calibration | null,
   onPartial?: (partial: Sweep, received: number) => void,
   thresholds?: SwrThresholds,
+  modes: readonly OperatingMode[] = [],
 ): Promise<LastCheck> {
   const raw = await client.scan({ ...scanRangeFor(band), points: CHECK_POINTS }, (p) =>
     onPartial?.(applyCalibration(cal, { freqHz: [...p.partial.freqHz], s11: [...p.partial.s11] }).sweep, p.received),
   );
   const { sweep, calibrated } = applyCalibration(cal, raw);
-  return { result: checkBand(sweep, band, { thresholds }), sweep, calibrated, at: Date.now() };
+  return { result: checkBand(sweep, band, { thresholds, segment: segmentFor(band, modes) }), sweep, calibrated, at: Date.now() };
+}
+
+/** Judge an existing check again, e.g. after the user changes where they operate. No rescan. */
+export function rejudge(check: LastCheck, thresholds: SwrThresholds, modes: readonly OperatingMode[]): LastCheck {
+  const band = check.result.band;
+  return { ...check, result: checkBand(check.sweep, band, { thresholds, segment: segmentFor(band, modes) }) };
 }
 
 /** Plain-English meaning of the three headline readings (spec: teach in place). */

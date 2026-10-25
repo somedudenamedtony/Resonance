@@ -340,6 +340,7 @@ function BandCard(props: { title: string; latest: SavedSweep; base?: SavedSweep;
           band={band}
           min={{ freqHz: latest.summary.minSwrHz, swr: latest.summary.minSwr }}
           overlays={base ? [{ freqHz: base.freqHz, swr: swrSeries(toSweep(base)), label: `${props.baseLabel}, ${when(base.takenAt)}` }] : undefined}
+          cursor
         />
       </div>
       {base && (

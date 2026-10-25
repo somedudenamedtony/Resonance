@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findBand, scanRangeFor, US_BAND_PLAN } from "../src/bands";
+import { findBand, modesLabel, scanRangeFor, segmentFor, US_BAND_PLAN } from "../src/bands";
 import { lengthFromQuarterWave } from "../src/coax";
 import { analyze } from "../src/metrics";
 import { type RlcAntenna, rlcGamma } from "../src/models";
@@ -73,6 +73,39 @@ describe("band verdicts", () => {
     expect(r.maxSwrInBand).toBeGreaterThan(1.5);
     expect(r.maxSwrInBand).toBeLessThanOrEqual(2);
     expect(r.level).toBe("usable");
+  });
+});
+
+describe("operating segments", () => {
+  it("narrows a band to the chosen modes", () => {
+    expect(segmentFor(band20, ["cw"])).toEqual({ startHz: 14_000_000, stopHz: 14_150_000, label: "CW" });
+    expect(segmentFor(band20, ["digital", "phone"])).toEqual({ startHz: 14_070_000, stopHz: 14_350_000, label: "digital and phone" });
+    expect(modesLabel(["phone", "cw", "digital"])).toBe("CW, digital and phone");
+  });
+
+  it("judges the whole band when no mode applies or the modes cover it", () => {
+    expect(segmentFor(band20, [])).toBeNull();
+    expect(segmentFor(findBand(US_BAND_PLAN, "30m")!, ["phone"])).toBeNull();
+    expect(segmentFor(findBand(US_BAND_PLAN, "60m")!, ["cw"])).toBeNull();
+    expect(segmentFor(findBand(US_BAND_PLAN, "160m")!, ["cw", "phone"])).toBeNull();
+  });
+
+  it("calls an antenna good for CW when only the phone end is high", () => {
+    // Resonant low in the band and narrow: fine at the CW end, poor at the phone end.
+    const sweep = bandSweep({ f0Hz: 14.075e6, r: 50, q: 25 });
+    expect(checkBand(sweep, band20).level).toBe("poor");
+    const r = checkBand(sweep, band20, { segment: segmentFor(band20, ["cw"]) });
+    expect(r.level).toBe("good");
+    expect(r.headline).toBe("Good for CW on 20m");
+    expect(r.detail).toMatch(/elsewhere in the band/);
+    expect(r.segment?.label).toBe("CW");
+  });
+
+  it("explains a miss relative to the segment", () => {
+    const r = checkBand(bandSweep({ f0Hz: 14.3e6, r: 50, q: 40 }), band20, { segment: segmentFor(band20, ["cw"]) });
+    expect(r.level).toBe("poor");
+    expect(r.cause).toBe("too_short");
+    expect(r.causeText).toMatch(/above the CW part of 20m/);
   });
 });
 

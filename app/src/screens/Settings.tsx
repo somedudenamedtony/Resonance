@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { ModePicker } from "../components/ModePicker";
 import { calLabel } from "../components/StatusBar";
 import { exportBackup, importBackup, type Settings as AppSettings, storageUsed, type Theme, type Units } from "../history";
 import { detectUpdateTarget, type UpdateTarget, type WifiStatus } from "../bridge/protocol";
@@ -139,6 +140,10 @@ export function Settings() {
         </button>
       </div>
 
+      <h3 class="section-title">Where you operate</h3>
+      <ModePicker />
+      <p class="muted small">Checks judge this part of each band. Pick Whole band to judge everything.</p>
+
       <h3 class="section-title">Calibration</h3>
       <div class="rows">
         <div class="row">
@@ -225,6 +230,14 @@ export function Settings() {
             </span>
           </div>
         )}
+      </div>
+      <div class="actions">
+        <button class="btn" onClick={() => go({ name: "learn" })}>
+          Learn the basics
+        </button>
+        <button class="btn" onClick={() => void save({ ...s, introSeen: false }).then(() => go({ name: "home" }))}>
+          Show quick start
+        </button>
       </div>
     </>
   );

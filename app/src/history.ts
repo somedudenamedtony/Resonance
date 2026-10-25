@@ -8,6 +8,7 @@ import {
   type Complex,
   DEFAULT_THRESHOLDS,
   findBand,
+  type OperatingMode,
   type Sweep,
   type SwrThresholds,
   US_BAND_PLAN,
@@ -59,9 +60,19 @@ export interface Settings {
   units: Units;
   thresholds: SwrThresholds;
   theme: Theme;
+  /** Modes the user operates; checks judge that part of each band. Empty = whole band. */
+  modes: OperatingMode[];
+  /** The first-run walkthrough has been shown (finished or skipped). */
+  introSeen: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { units: "metric", thresholds: { ...DEFAULT_THRESHOLDS }, theme: "auto" };
+export const DEFAULT_SETTINGS: Settings = {
+  units: "metric",
+  thresholds: { ...DEFAULT_THRESHOLDS },
+  theme: "auto",
+  modes: [],
+  introSeen: false,
+};
 
 // ---------- conversions ----------
 

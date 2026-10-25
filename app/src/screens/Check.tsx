@@ -1,8 +1,10 @@
 import { useEffect, useState } from "preact/hooks";
 import { type Band, scanRangeFor, type Sweep, swrSeries } from "@resonance/analysis";
+import { ModePicker } from "../components/ModePicker";
+import { LearnLink } from "./Learn";
 import { SwrChart } from "../components/SwrChart";
 import { Readings, Verdict } from "../components/Verdict";
-import { BAND_ORDER, bandsById, CHECK_POINTS, checkOneBand, SCAN_ALL_ORDER } from "../check";
+import { BAND_ORDER, bandsById, CHECK_POINTS, checkOneBand, rejudge, SCAN_ALL_ORDER } from "../check";
 import { type AntennaProfile, drift, listSweeps, saveCheck } from "../history";
 import {
   calibration,
@@ -40,6 +42,7 @@ export function Check() {
   const ready = link.value === "open" && !!device.value?.connected;
   const profile = profiles.value.find((p) => p.id === checkProfileId.value) ?? null;
   const thresholds = settings.value.thresholds;
+  const modes = settings.value.modes;
 
   useEffect(() => () => client.cancelScan(), []);
 
@@ -52,6 +55,7 @@ export function Check() {
         calibration.value,
         (partial, received) => setPhase({ kind: "scanning", band, partial, received }),
         thresholds,
+        modes,
       );
       setPhase({ kind: "done", band });
     } catch (e) {
@@ -69,7 +73,7 @@ export function Check() {
       try {
         rows[i] = {
           band: rows[i]!.band,
-          check: await checkOneBand(client, rows[i]!.band, calibration.value, undefined, thresholds),
+          check: await checkOneBand(client, rows[i]!.band, calibration.value, undefined, thresholds, modes),
         };
       } catch (e) {
         if ((e as { code?: string }).code === "cancelled") break;
@@ -141,9 +145,19 @@ export function Check() {
               swr={last.result.metrics.swr}
               band={last.result.band}
               min={last.result.metrics.min}
+              segment={
+                last.result.segment
+                  ? { ...last.result.segment, label: last.result.segment.label ?? "yours" }
+                  : undefined
+              }
+              cursor
             />
           </div>
           <Readings result={last.result} />
+          <div class="judge-on">
+            <p class="muted">Judge it for</p>
+            <ModePicker onChange={(m) => (lastCheck.value = rejudge(last, thresholds, m))} />
+          </div>
           <button class="link-btn advanced-link" onClick={() => go({ name: "advanced" })}>
             Advanced: Smith chart, R and X, export
           </button>
@@ -266,7 +280,14 @@ function BandPicker(props: { ready: boolean; profile: AntennaProfile | null; onP
           </select>
         </label>
       )}
-      <p class="muted" style={{ margin: "12px 0" }}>
+      <p class="muted" style={{ margin: "12px 0 8px" }}>
+        Where do you operate?
+      </p>
+      <ModePicker />
+      <p class="learn-links">
+        <LearnLink topic="segments">Why pick a mode?</LearnLink>
+      </p>
+      <p class="muted" style={{ margin: "12px 0 12px" }}>
         Which band?
       </p>
       <div class="bands">

@@ -5,6 +5,7 @@ import { SimulatedTransport } from "../bridge/simulator";
 import { BAND_ORDER, bandsById } from "../check";
 import { bandOf, type MeterReading, MeterSession, needleFraction, presetsFor } from "../meter";
 import { calibration, client, device, go, link, settings } from "../state";
+import { LearnLink } from "./Learn";
 
 /** Pause between scans so the bridge and the screen get a breath. */
 const MIN_GAP_MS = 40;
@@ -47,6 +48,9 @@ function Setup({ onStart }: { onStart: (hz: number) => void }) {
         </button>
       </div>
       <p class="muted">Live SWR at one frequency, for adjusting a tuner or matching network.</p>
+      <p class="learn-links">
+        <LearnLink topic="tuner">What a tuner does</LearnLink>
+      </p>
 
       <h3 class="section-title">Band</h3>
       <div class="bands">
