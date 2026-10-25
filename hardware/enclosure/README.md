@@ -6,9 +6,9 @@ preview mock-ups, don't print them).
 
 | Variant | Outside (mm) | Ports | Good for |
 |---|---|---|---|
-| stack | 104 × 35 × 43 | all on one end | smallest footprint, bench |
-| slim  | 104 × 64 × 31 | all on one end | velcro to the back of the NanoVNA |
-| stick | 177 × 35 × 31 | charge one end, NanoVNA the other | strap to a mast or tripod leg |
+| stack | 105 × 34 × 44 | ESP32 ports on the end, charge on the side | smallest footprint, bench |
+| slim  | 105 × 66 × 32 | ESP32 ports on the end, charge on the back | velcro to the back of the NanoVNA |
+| stick | 173 × 34 × 32 | ESP32 ports on the end, charge on the side | strap to a mast or tripod leg |
 
 Before printing, measure the values marked ★ in `resonance_case.scad` (board sizes, port and
 button positions) and re-export:

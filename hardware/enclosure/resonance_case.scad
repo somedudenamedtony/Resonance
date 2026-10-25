@@ -18,28 +18,31 @@ part = "assembly";
 fit = 0.3;            // clearance around each board
 headers = false;      // true if the ESP32 has pin headers soldered on (pointing down)
 
-// Battery shield (FORIOT-style 1×18650, USB-A + ON/OFF at one end, USB-C/micro at the other)
-sh_l = 99;            // ★ PCB length
-sh_w = 30;            // ★ PCB width
+// Battery shield (FORIOT-style 1×18650). Local x runs from the short end nearest the USB-C
+// charge port; local y = sh_w is the long edge the USB-C opens out of.
+sh_l = 100;           // measured
+sh_w = 29.4;          // measured
 sh_pcb = 1.6;
-sh_under = 4.0;       // tallest part under the PCB (the bottom-mounted USB-C)
-sh_over = 20.0;       // ★ PCB top to top of the cell in its holder
-sh_holes = [[3, 3], [sh_l - 3, 3], [3, sh_w - 3], [sh_l - 3, sh_w - 3]];
-sh_hole_d = 3.0;
-sh_port_y = [6, 24];  // ★ span covering the USB-C and micro USB on the x=0 end
-sh_btn = [86, 26.5];  // ★ ON/OFF button position (from the USB-C end, from the bottom edge)
-sh_btn_h = 3.5;       // button top above PCB top
+sh_under = 6.0;       // measured: metal can under the PCB
+sh_over = 20.45 - 1.6; // measured: PCB bottom to top of cell = 20.45
+sh_holes = [[3, 3], [sh_l - 3, 3], [3, sh_w - 3], [sh_l - 3, sh_w - 3]];  // ★ hole centers
+sh_hole_d = 3.0;      // ★
+sh_chg_x = 23.5;      // measured: USB-C center from the near short end (bottom side, long edge)
+sh_btn = [88, sh_w - 3.5]; // x measured; ★ distance from the long edge
+sh_btn_h = 1.75;      // measured: button top above PCB top
 
 // ESP32-S3 DevKitC-1 style board (two USB-C ports on one short end)
-es_l = 69;            // ★ PCB length (incl. antenna overhang)
-es_w = 26;            // ★ PCB width
+es_l = 63.5;          // measured, incl. antenna overhang
+es_pcb_l = 57.5;      // PCB alone (antenna sticks out 6 mm, 18.15 wide)
+es_ant_w = 18.15;
+es_w = 28.4;          // measured
 es_pcb = 1.6;
 es_over = 3.6;        // tallest part on top (module / USB-C)
 es_under = headers ? 9.0 : 1.5;
 es_overhang = 0.8;    // USB-C receptacles stick out past the PCB edge
-es_ports_y = [5.2, 20.8]; // ★ port centers across the board
+es_ports_y = [8.2, 20.2]; // measured: 8 and 20 mm from the edge
 es_port_z = 3.2;      // port center above PCB bottom
-es_led = [7, 13];     // ★ RGB status LED position
+es_led = [];          // ★ RGB status LED [x, y]; empty = no light pipe
 
 // Case
 wall = 2.0;
@@ -66,7 +69,7 @@ tray_l = sh_btn[0] - 12;                         // stack: stop short of the ON/
 z_esp = variant == "stack" ? tray_z + tray_t + es_under : z_shield;
 esp_top = z_esp + es_pcb + es_over;
 
-IW = variant == "slim" ? sh_w + 2 * fit + 3 + es_w + fit : sh_w + 2 * fit;
+IW = variant == "slim" ? es_w + 2 * fit + 3 + sh_w + fit : sh_w + 2 * fit;
 IL = variant == "stick" ? sh_l + 2 * fit + 4 + es_l + es_overhang : sh_l + 2 * fit;
 esp_port_top = z_esp + es_port_z + plug_h / 2;
 IH = max(max(cell_top, esp_top) + 1.0, esp_port_top + 2.0);  // keep USB openings as closed windows
@@ -76,13 +79,14 @@ OW = IW + 2 * wall;
 OH = floor_t + IH;                                 // base height; the lid sits on top
 
 // Board placements (origin = PCB bottom-left corner of each board, in cavity coordinates)
-module at_shield() { translate([fit, fit, z_shield]) children(); }
+// slim puts the ESP32 at the front so the shield's charge-port edge faces the back wall
+module at_shield() { translate([fit, variant == "slim" ? es_w + 2 * fit + 3 : fit, z_shield]) children(); }
 
 module at_esp() {
     if (variant == "stack")
         translate([es_overhang, (IW - es_w) / 2, z_esp]) children();
     else if (variant == "slim")
-        translate([es_overhang, sh_w + 2 * fit + 3, z_esp]) children();
+        translate([es_overhang, fit, z_esp]) children();
     else // stick: ports face the far end
         translate([IL - es_overhang, es_w + (IW - es_w) / 2, z_esp]) rotate([0, 0, 180]) children();
 }
@@ -93,7 +97,8 @@ module shield_mock() {
     color("#1d1f22") cube([sh_l, sh_w, sh_pcb]);
     color("#2b2d30") translate([4, (sh_w - 21) / 2, sh_pcb]) cube([80, 21, 4]);
     color("#c9ced4") translate([sh_l - 14, sh_w / 2 - 7, sh_pcb]) cube([14, 14, 7]);      // USB-A
-    color("#c9ced4") translate([0, 14, -3.2]) cube([7.4, 9, 3.2]);                          // USB-C (bottom)
+    color("#c9ced4") translate([sh_chg_x - 4.5, sh_w - 7.4, -3.2]) cube([9, 7.4, 3.2]);    // USB-C (bottom)
+    color("#9aa0a6") translate([60, 6, -sh_under]) cube([7, 7, sh_under]);                 // metal can
     color("#e8e8e8") translate([sh_btn[0] - 3, sh_btn[1] - 3, sh_pcb]) cube([6, 6, sh_btn_h]);
 }
 
@@ -102,10 +107,10 @@ module cell_mock() {
 }
 
 module esp_mock() {
-    color("#202326") cube([es_l, es_w, es_pcb]);
-    color("#b8bec6") translate([es_l - 25.5, (es_w - 18) / 2, es_pcb]) cube([25.5, 18, 3.2]);  // module
+    color("#202326") cube([es_pcb_l, es_w, es_pcb]);
+    color("#b8bec6") translate([es_l - 25.5, (es_w - es_ant_w) / 2, es_pcb]) cube([25.5, es_ant_w, 3.2]);  // module
     for (y = es_ports_y) color("#c9ced4") translate([-es_overhang, y - 4.5, es_pcb]) cube([7.4, 9, 3.2]);
-    color("#ff4fa3") translate([es_led[0] - 1, es_led[1] - 1, es_pcb]) cube([2, 2, 0.8]);
+    if (len(es_led) == 2) color("#ff4fa3") translate([es_led[0] - 1, es_led[1] - 1, es_pcb]) cube([2, 2, 0.8]);
 }
 
 // ---------------------------------------------------------------- shapes
@@ -116,11 +121,12 @@ module rrect(l, w, h, r = corner_r) {
 
 // Port openings, in cavity coordinates, extended through the walls.
 module port_cuts(grow = 0) {
-    // Battery shield charge ports (bottom side, x = 0 end)
-    at_shield() translate([-wall - fit - 2, sh_port_y[0] - grow, -sh_under - 1.2 - grow])
-        cube([wall + 4, sh_port_y[1] - sh_port_y[0] + 2 * grow, sh_under + 3.2 + 2 * grow]);
-    // ESP32 USB-C ports (OTG to the NanoVNA, UART for flashing)
-    at_esp() for (y = es_ports_y)
+    // Battery shield USB-C charge port: bottom side, opens out of the long edge
+    at_shield() translate([sh_chg_x, sh_w - 2, -1.6])
+        rotate([-90, 0, 0]) linear_extrude(wall + fit + 4)
+            offset(r = 2 + grow) square([plug_w - 4, plug_h - 4], center = true);
+    // ESP32 USB-C ports (OTG to the NanoVNA, UART for flashing): one window for both
+    at_esp() hull() for (y = es_ports_y)
         translate([-es_overhang - wall - 2, y, es_port_z])
             rotate([0, 90, 0]) linear_extrude(wall + 4)
                 offset(r = 2 + grow) square([plug_h - 4, plug_w - 4], center = true);
@@ -157,10 +163,10 @@ module base() {
 
 module esp_rails(height) {
     at_esp() translate([0, 0, -height]) {
-        translate([6, -0.5, 0]) cube([es_l - 8, 2.5, height]);
-        translate([6, es_w - 2, 0]) cube([es_l - 8, 2.5, height]);
+        translate([6, -0.5, 0]) cube([es_pcb_l - 8, 2.5, height]);
+        translate([6, es_w - 2, 0]) cube([es_pcb_l - 8, 2.5, height]);
         // end stop behind the antenna end keeps the ports pressed to the wall
-        translate([es_l + 0.2, 4, 0]) cube([1.6, es_w - 8, height + es_pcb + 1]);
+        translate([es_l + 0.2, (es_w - es_ant_w) / 2, 0]) cube([1.6, es_ant_w, height + es_pcb + 1]);
     }
 }
 
@@ -181,7 +187,7 @@ module tray() {
             translate([0, 0, tray_z + tray_t]) esp_rails(es_under);
         }
         // wire pass-through for 5V/GND
-        translate([tray_l - 12, IW - 8, tray_z - 1]) cube([8, 6, tray_t + 2]);
+        translate([tray_l - 8, IW - 8, tray_z - 1]) cube([6, 6, tray_t + 2]);
     }
 }
 
@@ -212,7 +218,8 @@ module lid() {
         // resonance dip glyph
         translate([OL / 2, OW / 2 - (variant == "stack" ? 12 : 15), lid_t - 0.6]) linear_extrude(1) dip_glyph();
         // status LED window
-        translate([wall, wall, floor_t - OH]) at_esp() translate([es_led[0], es_led[1], -50]) cylinder(d = 3.2, h = 100);
+        if (len(es_led) == 2)
+            translate([wall, wall, floor_t - OH]) at_esp() translate([es_led[0], es_led[1], -50]) cylinder(d = 3.2, h = 100);
         // ON/OFF flexure: U-shaped slot around a tongue
         translate([wall, wall, 0]) at_shield() translate([sh_btn[0], sh_btn[1], -z_shield]) flex_slot();
     }
@@ -252,7 +259,7 @@ module lid_posts() {
         at_esp() for (x = [es_l * 0.35], y = [1.2, es_w - 1.2])
             translate([x, y, es_pcb + 0.2]) cylinder(d = 2.4, h = IH - (z_esp + es_pcb + 0.2));
         // light pipe over the status LED
-        at_esp() translate([es_led[0], es_led[1], es_pcb + 1.2]) difference() {
+        if (len(es_led) == 2) at_esp() translate([es_led[0], es_led[1], es_pcb + 1.2]) difference() {
             cylinder(d = 6, h = IH - (z_esp + es_pcb + 1.2));
             translate([0, 0, -1]) cylinder(d = 3.2, h = 100);
         }

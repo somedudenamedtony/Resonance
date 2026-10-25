@@ -125,11 +125,10 @@
     <div>
       <h3>Measure these before printing</h3>
       <ul>
-        <li>Shield PCB length and width (est. 99 × 30 mm)</li>
-        <li>Shield height to the top of the cell (est. 20 mm above the PCB)</li>
-        <li>Where the USB-C charge port and the ON/OFF button sit</li>
-        <li>ESP32 PCB size (est. 69 × 26 mm) and the two USB-C port centers</li>
-        <li>Whether the ESP32 has pin headers soldered. Leave them off and wire 5V/GND straight to the pads, which keeps every case shorter.</li>
+        <li>Measured so far: both boards, the cell height, the ports and the ON/OFF button position</li>
+        <li>Still to measure: the ON/OFF button's distance from the long edge</li>
+        <li>Still to measure: the shield's mounting hole centers and diameter</li>
+        <li>Still to measure: where any LEDs sit on either board (for light pipes)</li>
       </ul>
     </div>
     <div>
@@ -151,21 +150,21 @@
 <script>
 const VARIANTS = {
   stack: {
-    name: "Stack", size: [103.6, 34.6, 43.4], grams: 50,
-    blurb: "ESP32 rides on a tray above the battery. Smallest footprint; every port is on one end.",
-    ports: "Charge + OTG + UART, one end", good: "Bench, pocket, drawer",
+    name: "Stack", size: [104.6, 34.0, 44.3], grams: 51,
+    blurb: "ESP32 rides on a tray above the battery. Smallest footprint.",
+    ports: "OTG + UART on the end, charge on the side", good: "Bench, pocket, drawer",
     parts: ["base", "lid", "tray"],
   },
   slim: {
-    name: "Slim", size: [103.6, 63.9, 31.1], grams: 59,
+    name: "Slim", size: [104.6, 65.7, 32.0], grams: 62,
     blurb: "Boards side by side. Flat enough to velcro onto the back of the NanoVNA.",
-    ports: "Charge + OTG + UART, one end", good: "Piggyback on the NanoVNA",
+    ports: "OTG + UART on the end, charge on the back", good: "Piggyback on the NanoVNA",
     parts: ["base", "lid"],
   },
   stick: {
-    name: "Stick", size: [177.4, 34.6, 31.1], grams: 63,
-    blurb: "Boards end to end. Charge port on one end, NanoVNA cable on the other.",
-    ports: "Charge one end, OTG + UART the other", good: "Strap to a mast or tripod leg",
+    name: "Stick", size: [172.9, 34.0, 32.0], grams: 62,
+    blurb: "Boards end to end. Long and narrow, NanoVNA cable out the end.",
+    ports: "OTG + UART on the end, charge on the side", good: "Strap to a mast or tripod leg",
     parts: ["base", "lid"],
   },
 };
