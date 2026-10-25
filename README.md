@@ -63,7 +63,7 @@ Exit: app runs in a desktop browser against the simulator and plots a fake SWR c
 - [x] `docs`: SPEC.md, PROTOCOL.md
 - [x] CI: typecheck, test, build on push
 
-### M1 — bridge talks (code complete, waiting on hardware)
+### M1 — bridge talks (running on hardware)
 
 Exit: type `version` in a browser console page, get the NanoVNA's reply over Wi-Fi.
 
@@ -72,7 +72,7 @@ Exit: type `version` in a browser console page, get the NanoVNA's reply over Wi-
 - [x] NanoVNA emulator (NanoVNA-D and classic dialects) + end-to-end tests with the app client
 - [x] ESP32 platform layer: USB host CDC-ACM, Wi-Fi AP, HTTP + WebSocket, LittleFS, LED;
       builds in CI, flashable images uploaded as artifacts
-- [ ] Run on hardware: follow the first-flash checklist in [`firmware/README.md`](firmware/README.md)
+- [x] Runs on hardware (2026-10-25): flashed from the CI build, Wi-Fi AP + app load on iPhone, NanoVNA-H (fw 1.2.27, 101 points, binary scans) enumerates over USB host and probes OK
 
 Also done ahead of M2/M3: binary streaming, segmenting, app hosting from LittleFS, and the
 calibration math validated end to end against emulated raw data.
