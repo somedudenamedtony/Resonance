@@ -43,6 +43,10 @@ export const checkView = (last: LastCheck, extraHz?: number): DisplayView =>
 export const tuneView = (targetHz: number, resonanceHz: number | null): DisplayView =>
   deviceView(tuneRange(targetHz), [targetHz, resonanceHz]);
 
+/** Resonance search: the range being searched, or the close look at a dip, with the dip and target marked. */
+export const findView = (range: { startHz: number; stopHz: number }, markersHz: readonly (number | null | undefined)[] = []): DisplayView =>
+  deviceView(range, markersHz);
+
 /** SWR meter: the band around the frequency (or ±2% off-band), a marker on it. */
 export function meterView(freqHz: number, band: Band | undefined): DisplayView {
   const range = band ? scanRangeFor(band) : { startHz: Math.max(50_000, freqHz * 0.98), stopHz: freqHz * 1.02 };

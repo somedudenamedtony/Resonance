@@ -1803,3 +1803,59 @@ input[type="range"] {
 .intro-dots span.on {
   background: var(--trace);
 }
+
+/* ---- Find resonance ---- */
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.dip-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 14px;
+  border: none;
+  border-top: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.all-bands li:first-child .dip-row {
+  border-top: none;
+}
+
+.dip-row.selected {
+  background: var(--trace-wash);
+}
+
+.dip-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--trace);
+  color: var(--on-trace);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dip-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dip-swr {
+  font-size: 14px;
+  font-weight: 600;
+}

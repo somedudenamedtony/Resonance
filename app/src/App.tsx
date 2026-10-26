@@ -8,6 +8,7 @@ import { Check } from "./screens/Check";
 import { Coax } from "./screens/Coax";
 import { Connect } from "./screens/Connect";
 import { Home } from "./screens/Home";
+import { Find } from "./screens/Find";
 import { Learn } from "./screens/Learn";
 import { Meter } from "./screens/Meter";
 import { Settings } from "./screens/Settings";
@@ -32,7 +33,8 @@ export function App() {
         {r.name === "check" && <Check />}
         {r.name === "connect" && <Connect />}
         {r.name === "calibrate" && <Calibrate />}
-        {r.name === "tune" && <Tune />}
+        {r.name === "tune" && <Tune targetHz={r.targetHz} />}
+        {r.name === "find" && <Find targetHz={r.targetHz} profileId={r.profileId} />}
         {r.name === "meter" && <Meter />}
         {r.name === "antennas" && <Antennas />}
         {r.name === "profile" && <Profile id={r.id} />}

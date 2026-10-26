@@ -34,6 +34,7 @@ export const ANTENNA_PRESETS: readonly AntennaPreset[] = [
   { id: "short40", name: "40m dipole, too short", antenna: { f0Hz: 7.42e6, r: 58, q: 6 } },
   { id: "mismatch20", name: "20m vertical, poor match", antenna: { f0Hz: 14.2e6, r: 16, q: 5 } },
   { id: "efhw40", name: "40m EFHW, usable", antenna: { f0Hz: 7.12e6, r: 50, q: 12 } },
+  { id: "adsb1090", name: "1090 MHz ADS-B ground plane, a bit long", antenna: { f0Hz: 1.072e9, r: 42, q: 4 } },
 ];
 
 export function findPreset(id: string): AntennaPreset | undefined {

@@ -38,7 +38,8 @@ export type Route =
   | { name: "connect" }
   | { name: "check" }
   | { name: "calibrate" }
-  | { name: "tune" }
+  | { name: "tune"; targetHz?: number }
+  | { name: "find"; targetHz?: number; profileId?: string }
   | { name: "meter" }
   | { name: "antennas" }
   | { name: "profile"; id: string }

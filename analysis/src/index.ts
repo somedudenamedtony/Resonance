@@ -11,3 +11,4 @@ export * from "./coax";
 export * from "./models";
 export * from "./fft";
 export * from "./export";
+export * from "./wide";
