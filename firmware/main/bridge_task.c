@@ -10,6 +10,7 @@
 #include "freertos/stream_buffer.h"
 #include "freertos/task.h"
 #include "ota.h"
+#include "release_update.h"
 #include "usb_link.h"
 #include "web.h"
 #include "wifi.h"
@@ -60,6 +61,21 @@ static bool io_wifi_set(void *u, bool sta, const char *ssid, const char *pw)
 static void io_wifi_status(void *u, rc_wifi_status_t *out)
 {
     wifi_get_status(out);
+}
+
+static bool io_update_check(void *u, char *err, size_t cap)
+{
+    return release_update_check(err, cap);
+}
+
+static bool io_update_install(void *u, char *err, size_t cap)
+{
+    return release_update_install(err, cap);
+}
+
+static void io_update_status(void *u, rc_update_status_t *out)
+{
+    release_update_status(out);
 }
 
 static void io_log(void *u, const char *msg)
@@ -114,6 +130,9 @@ static void bridge_task(void *arg)
         .ota_write = ota_write,
         .ota_end = ota_end,
         .ota_abort = ota_abort,
+        .update_check = io_update_check,
+        .update_install = io_update_install,
+        .update_status = io_update_status,
     };
     rc_bridge_init(&s_bridge, &io, now_ms());
     ESP_LOGI(TAG, "bridge core %s running", RC_BRIDGE_VERSION);

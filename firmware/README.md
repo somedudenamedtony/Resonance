@@ -14,12 +14,15 @@ firmware/
 │   ├── src/rc_shell.c           NanoVNA shell session (echo, prompt, binary-by-length)
 │   ├── src/rc_scan.c            segmentation, text/binary scan parsing, frame encoding
 │   ├── src/rc_bridge.c          the state machine: probe, scan, cancel, console, errors
+│   ├── src/rc_update.c          release JSON, version compare (for updates from GitHub)
 │   └── third_party/cjson        cJSON 1.7.18 (MIT)
 ├── main/                        ESP32-only glue, no protocol logic
 │   ├── bridge_task.c            one task owns the core; everything else posts events
 │   ├── usb_link.c               USB host CDC-ACM to the NanoVNA
 │   ├── wifi.c                   AP "Resonance-XXXX" (+ optional home Wi-Fi)
 │   ├── web.c                    app from LittleFS, WebSocket at /ws
+│   ├── ota.c                    writes updates; rollback probation for new firmware
+│   ├── release_update.c         checks GitHub releases and installs them
 │   └── status_led.c             onboard RGB LED
 └── host/                        the same core on Linux/macOS
     ├── bridge_host.c            resonance-bridge-host, used by emulator/
@@ -49,6 +52,23 @@ idf.py -p /dev/ttyUSB0 flash monitor # use the board's UART port
 CI uploads ready-made images (artifact `resonance-bridge-esp32s3`) on every push. To flash
 those without ESP-IDF: `pip install esptool`, then from the artifact folder run
 `esptool.py --chip esp32s3 -p <port> -b 460800 write_flash @flash_args`.
+
+## Updates
+
+Once the bridge is on home Wi-Fi it checks GitHub for a newer release and the app offers it in
+**Settings → Update the bridge**. Tap Install: the bridge downloads the firmware and the app
+itself, writes both, and restarts once. A file upload in the same place still works without
+internet.
+
+To publish a release, bump `RC_BRIDGE_VERSION` in
+`components/resonance_core/include/rc_bridge.h` and merge to `main`. When CI passes it creates
+release `v<version>` with the images attached.
+
+New firmware is kept only once it joins home Wi-Fi or an app connects. If it crashes or
+restarts first, or 5 minutes pass without either, the bootloader goes back to the previous
+firmware and the app says so. Rollback is a bootloader feature, so a board first flashed with
+an older build needs **one USB flash** (bootloader included) to get it. Partition table
+changes can never go over the air.
 
 The serial log prints the Wi-Fi name and password on boot:
 

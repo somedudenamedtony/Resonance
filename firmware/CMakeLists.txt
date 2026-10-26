@@ -2,6 +2,11 @@
 #   idf.py set-target esp32s3 && idf.py build flash monitor
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+# The app version (esp_app_desc, shown when a rolled-back firmware is reported) is the bridge
+# version, which is also what GitHub releases are tagged with.
+file(STRINGS ${CMAKE_CURRENT_LIST_DIR}/components/resonance_core/include/rc_bridge.h RC_VERSION_LINE
+     REGEX "^#define RC_BRIDGE_VERSION ")
+string(REGEX REPLACE ".*\"(.*)\".*" "\\1" PROJECT_VER "${RC_VERSION_LINE}")
 project(resonance-bridge)
 
 # Put the built web app (app/dist) on the LittleFS partition so the bridge can serve it.

@@ -43,6 +43,27 @@ typedef struct {
     char reason[64];   // why the last attempt failed, empty otherwise
 } rc_wifi_status_t;
 
+// Installing the latest GitHub release, as the platform sees it, reported in an `update` message.
+typedef enum {
+    RC_UPDATE_IDLE = 0,     // not checked yet
+    RC_UPDATE_CHECKING,     // asking GitHub for the latest release
+    RC_UPDATE_CURRENT,      // already running the latest release
+    RC_UPDATE_AVAILABLE,    // `latest` is newer than this bridge
+    RC_UPDATE_INSTALLING,   // downloading and writing `step`; `received` of `total` bytes so far
+    RC_UPDATE_DONE,         // installed; the bridge is restarting
+    RC_UPDATE_FAILED,       // `message` says why; nothing was changed
+} rc_update_state_t;
+
+typedef struct {
+    rc_update_state_t state;
+    char latest[24];       // newest release, empty until checked
+    char step[12];         // "firmware" or "app" while installing
+    uint32_t received;     // bytes of firmware + app written so far
+    uint32_t total;        // bytes of firmware + app altogether
+    char message[96];      // why it failed
+    char rolled_back[24];  // a version that didn't start properly and was undone, empty otherwise
+} rc_update_status_t;
+
 typedef struct {
     void (*serial_write)(void *user, const uint8_t *data, size_t len);
     void (*send_text)(void *user, const char *json);
@@ -59,6 +80,12 @@ typedef struct {
     bool (*ota_write)(void *user, const uint8_t *data, size_t len, char *err, size_t err_cap);
     bool (*ota_end)(void *user, char *err, size_t err_cap);
     void (*ota_abort)(void *user);
+    // Optional updates from GitHub releases. Each starts the work in the background and returns
+    // false (and may fill `err`) if it can't; progress comes back through update_status, which is
+    // polled about once a second.
+    bool (*update_check)(void *user, char *err, size_t err_cap);
+    bool (*update_install)(void *user, char *err, size_t err_cap);
+    void (*update_status)(void *user, rc_update_status_t *out);
     void *user;
 } rc_bridge_io_t;
 
@@ -136,6 +163,10 @@ typedef struct rc_bridge {
     rc_wifi_status_t wifi;
     bool wifi_sent;
     uint32_t wifi_next_ms;
+
+    // Release update status last sent to the app
+    rc_update_status_t update;
+    bool update_sent;
 } rc_bridge_t;
 
 void rc_bridge_init(rc_bridge_t *b, const rc_bridge_io_t *io, uint32_t now_ms);
