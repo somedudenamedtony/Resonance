@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#define RC_BRIDGE_VERSION "0.4.0"
+#define RC_BRIDGE_VERSION "0.4.1"
 #define RC_SHELL_BUF_SIZE 32768
 #define RC_MAX_SCAN_POINTS 10001
 #define RC_MAX_SEGMENT_POINTS 401
