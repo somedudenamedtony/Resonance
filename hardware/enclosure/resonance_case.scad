@@ -64,7 +64,8 @@ floor_t = 2.0;
 lid_t = 2.0;
 lip_h = 4.0;
 lip_t = 1.4;
-snap_r = 0.6;
+snap_r = 0.95;        // bump radius: catches ~0.65 mm past the 0.3 mm lip gap (was 0.6, too loose)
+snap_len = 14;
 corner_r = 3.0;
 plug_w = 13;          // USB-C plug overmold clearance
 plug_h = 8;
@@ -165,7 +166,7 @@ module base() {
         translate([wall, wall, floor_t]) port_cuts();
         // snap grooves in the long walls
         for (x = snap_xs, y = [wall, wall + IW])
-            translate([wall + x - 5, y, snap_z]) rotate([0, 90, 0]) cylinder(r = snap_r + 0.15, h = 10);
+            translate([wall + x - snap_len / 2 - 1, y, snap_z]) rotate([0, 90, 0]) cylinder(r = snap_r + 0.15, h = snap_len + 2);
         // battery gauge: slits in the charge-side wall beside the underside LEDs
         translate([wall, wall, floor_t]) at_shield() for (x = sh_leds_x)
             translate([x - 0.8, sh_w - 1, -sh_under + 1]) cube([1.6, wall + fit + sh_btn_out + 3, 4]);
@@ -274,7 +275,7 @@ module lid() {
             }
             // snap bumps
             for (x = snap_xs, y = [wall + fit, wall + IW - fit])
-                translate([wall + x - 4, y, -lip_h / 2]) rotate([0, 90, 0]) cylinder(r = snap_r, h = 8);
+                translate([wall + x - snap_len / 2, y, -lip_h / 2]) rotate([0, 90, 0]) cylinder(r = snap_r, h = snap_len);
             lid_posts();
         }
         // lip must clear the port openings and plugs
