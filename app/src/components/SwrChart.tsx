@@ -14,13 +14,22 @@ interface Props {
   segment?: { startHz: number; stopHz: number; label: string };
   /** Drag (or arrow keys) to read SWR at any frequency. Only for finished sweeps. */
   cursor?: boolean;
+  /** Log frequency axis, for ranges spanning decades (wide resonance search). */
+  log?: boolean;
+  /** Top of the SWR axis. Defaults to 3, where a band check stops caring. */
+  swrMax?: number;
+  /** Numbered points of interest, e.g. the dips a wide search found. */
+  marks?: { freqHz: number; label: string }[];
+  /** A frequency the antenna is meant for, drawn as a dashed line. */
+  target?: number;
+  /** Label the start and stop frequencies (and decades on a log axis) when there's no band. */
+  edges?: boolean;
 }
 
 const W = 360;
 const H = 210;
 const PAD = { l: 34, r: 12, t: 14, b: 30 };
-const SWR_MAX = 3;
-const TICKS = [1, 1.5, 2, 3];
+const TICKS = [1, 1.5, 2, 3, 5, 10];
 
 /** Index of the sweep point nearest `f`. Sweeps are sorted by frequency. */
 export function nearestIndex(freqHz: readonly number[], f: number): number {
@@ -42,14 +51,29 @@ export function swrWord(s: number): string {
   return "many radios cut power";
 }
 
-export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays, segment, cursor }: Props) {
+/** Round frequencies (1, 10, 100 MHz, 1 GHz, ...) strictly inside a range, for a log axis. */
+export function decadesIn(startHz: number, stopHz: number): number[] {
+  const out: number[] = [];
+  for (let d = 1e5; d < stopHz; d *= 10) if (d > startHz * 1.3 && d < stopHz / 1.3) out.push(d);
+  return out;
+}
+
+export function SwrChart(props: Props) {
+  const { freqHz, swr, startHz, stopHz, band, min, overlays, segment, cursor, log, marks, target, edges } = props;
+  const SWR_MAX = props.swrMax ?? 3;
+  const ticks = TICKS.filter((t) => t <= SWR_MAX);
   const svgRef = useRef<SVGSVGElement>(null);
   const [at, setAt] = useState<number | null>(null);
   const dragging = useRef(false);
-  const x = (f: number) => PAD.l + ((f - startHz) / (stopHz - startHz)) * (W - PAD.l - PAD.r);
+  // 0..1 across the plot, and back.
+  const frac = (f: number) => (log ? Math.log(f / startHz) / Math.log(stopHz / startHz) : (f - startHz) / (stopHz - startHz));
+  const unfrac = (t: number) => (log ? startHz * (stopHz / startHz) ** t : startHz + t * (stopHz - startHz));
+  const x = (f: number) => PAD.l + frac(f) * (W - PAD.l - PAD.r);
   const y = (s: number) => {
     const v = Math.min(Math.max(s, 1), SWR_MAX);
-    return PAD.t + ((SWR_MAX - v) / (SWR_MAX - 1)) * (H - PAD.t - PAD.b);
+    // Past 3:1 the axis goes logarithmic so the useful 1–3 stretch keeps half the height.
+    const t = SWR_MAX > 3 ? Math.log(v) / Math.log(SWR_MAX) : (v - 1) / (SWR_MAX - 1);
+    return PAD.t + (1 - t) * (H - PAD.t - PAD.b);
   };
   const toPath = (fs: readonly number[], ss: readonly number[]) =>
     fs
@@ -66,7 +90,7 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays, se
     if (!svg) return;
     const r = svg.getBoundingClientRect();
     const vx = ((clientX - r.left) / r.width) * W;
-    const f = startHz + ((vx - PAD.l) / (W - PAD.l - PAD.r)) * (stopHz - startHz);
+    const f = unfrac(Math.min(1, Math.max(0, (vx - PAD.l) / (W - PAD.l - PAD.r))));
     setAt(nearestIndex(freqHz, f));
   };
   const onKey = (e: KeyboardEvent) => {
@@ -100,6 +124,7 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays, se
     ? `SWR curve. Lowest ${min.swr.toFixed(2)} to 1 at ${mhz(min.freqHz)} megahertz.`
     : "SWR curve, scanning.";
 
+  const swrNear = (f: number) => (freqHz.length ? swr[nearestIndex(freqHz, f)]! : SWR_MAX);
   const cf = idx !== null ? freqHz[idx]! : null;
   const cs = idx !== null ? swr[idx]! : null;
   const fmtS = (v: number) => (Number.isFinite(v) && v < 10 ? v.toFixed(2) : ">10");
@@ -153,7 +178,7 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays, se
           </text>
         </g>
       )}
-      {TICKS.map((t) => (
+      {ticks.map((t) => (
         <g key={t}>
           <line
             x1={PAD.l}
@@ -176,6 +201,35 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays, se
           </text>
           <text x={x(band.stopHz)} y={H - 10} text-anchor="middle">
             {mhz(band.stopHz)}
+          </text>
+        </g>
+      )}
+      {!band && edges && (
+        <g font-size="11" fill="var(--muted)" class="num">
+          <text x={PAD.l} y={H - 10} text-anchor="start">
+            {mhz(startHz)}
+          </text>
+          {log &&
+            decadesIn(startHz, stopHz)
+              .filter((d) => x(d) - PAD.l > 28 && W - PAD.r - 64 - x(d) > 20)
+              .map((d) => (
+              <g key={d}>
+                <line x1={x(d)} x2={x(d)} y1={PAD.t} y2={H - PAD.b} stroke="var(--rule)" stroke-width="1" />
+                <text x={x(d)} y={H - 10} text-anchor="middle">
+                  {mhz(d)}
+                </text>
+              </g>
+            ))}
+          <text x={W - PAD.r - 30} y={H - 10} text-anchor="end">
+            {mhz(stopHz)}
+          </text>
+        </g>
+      )}
+      {target !== undefined && target >= startHz && target <= stopHz && (
+        <g>
+          <line x1={x(target)} x2={x(target)} y1={PAD.t} y2={H - PAD.b} stroke="var(--trace-deep)" stroke-width="1.5" stroke-dasharray="6 4" />
+          <text x={x(target)} y={PAD.t + 12} text-anchor={x(target) > W / 2 ? "end" : "start"} dx={x(target) > W / 2 ? -4 : 4} font-size="11" font-weight="600" fill="var(--trace-deep)">
+            Target
           </text>
         </g>
       )}
@@ -226,6 +280,14 @@ export function SwrChart({ freqHz, swr, startHz, stopHz, band, min, overlays, se
           </text>
         </g>
       )}
+      {marks?.map((m) => (
+        <g key={m.label} class="num">
+          <circle cx={x(m.freqHz)} cy={y(swrNear(m.freqHz))} r="9" fill="var(--trace)" stroke="var(--surface)" stroke-width="2" />
+          <text x={x(m.freqHz)} y={y(swrNear(m.freqHz)) + 4} text-anchor="middle" font-size="11" font-weight="700" fill="var(--on-trace)">
+            {m.label}
+          </text>
+        </g>
+      ))}
       {cf !== null && cs !== null && (
         <g pointer-events="none">
           <line x1={x(cf)} x2={x(cf)} y1={PAD.t} y2={H - PAD.b} stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="3 3" />

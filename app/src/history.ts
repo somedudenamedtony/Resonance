@@ -25,8 +25,10 @@ export interface AntennaProfile {
   name: string;
   type: AntennaType;
   bands: string[];
+  /** A frequency it's for outside the ham bands (e.g. 1090 MHz ADS-B), Hz. */
+  targetHz?: number;
   createdAt: number;
-  /** Baseline sweep per band id: what "healthy" looked like. */
+  /** Baseline sweep per band id (or TARGET_KEY for the target): what "healthy" looked like. */
   baselines: Record<string, string>;
   notes?: string;
 }
@@ -44,7 +46,7 @@ export interface SavedSweep {
   takenAt: number;
   profileId: string | null;
   bandId: string | null;
-  job: "check" | "tune" | "coax";
+  job: "check" | "tune" | "coax" | "find";
   freqHz: number[];
   /** Interleaved [re, im, ...]. */
   s11: number[];
@@ -100,13 +102,15 @@ export async function listProfiles(store: Store): Promise<AntennaProfile[]> {
 
 export async function createProfile(
   store: Store,
-  fields: Pick<AntennaProfile, "name" | "type" | "bands"> & { notes?: string },
+  fields: Pick<AntennaProfile, "name" | "type" | "bands" | "targetHz"> & { notes?: string },
 ): Promise<AntennaProfile> {
   const name = fields.name.trim();
   if (!name) throw new Error("Give the antenna a name.");
   const bands = fields.bands.filter((b) => findBand(US_BAND_PLAN, b));
-  if (bands.length === 0) throw new Error("Pick at least one band.");
+  const targetHz = fields.targetHz && fields.targetHz > 0 ? Math.round(fields.targetHz) : undefined;
+  if (bands.length === 0 && !targetHz) throw new Error("Pick at least one band, or enter the frequency it's for.");
   const p: AntennaProfile = { id: newId("ant"), name, type: fields.type, bands, createdAt: Date.now(), baselines: {}, notes: fields.notes };
+  if (targetHz) p.targetHz = targetHz;
   await store.put("profiles", p);
   return p;
 }
@@ -146,6 +150,47 @@ export async function saveCheck(store: Store, check: LastCheck, profileId: strin
   return s;
 }
 
+/** Baseline key for a profile's target frequency (bands use their id). */
+export const TARGET_KEY = "target";
+
+/** Which baseline a sweep belongs to: its band, or the target for a resonance search. */
+export const baselineKey = (s: Pick<SavedSweep, "bandId" | "job">): string | null =>
+  s.bandId ?? (s.job === "find" ? TARGET_KEY : null);
+
+/**
+ * Save a resonance search: the close look at the dip nearest the target (or the deepest), else the
+ * wide sweep. Judged by the SWR at the target when there is one. The first becomes the baseline.
+ */
+export async function saveFind(
+  store: Store,
+  found: { sweep: Sweep; calibrated: boolean; at: number; swrAtTarget: number | null },
+  profileId: string | null,
+  thresholds: SwrThresholds,
+): Promise<SavedSweep> {
+  const t = found.swrAtTarget;
+  const level: VerdictLevel | null = t === null ? null : t <= thresholds.good ? "good" : t <= thresholds.usable ? "usable" : "poor";
+  const s: SavedSweep = {
+    id: newId("swp"),
+    takenAt: found.at,
+    profileId,
+    bandId: null,
+    job: "find",
+    freqHz: [...found.sweep.freqHz],
+    s11: flattenS11(found.sweep.s11),
+    calibrated: found.calibrated,
+    summary: summarize(found.sweep, level),
+  };
+  await store.put("sweeps", s);
+  if (profileId) {
+    const p = await store.get<AntennaProfile>("profiles", profileId);
+    if (p && !p.baselines[TARGET_KEY]) {
+      p.baselines[TARGET_KEY] = s.id;
+      await store.put("profiles", p);
+    }
+  }
+  return s;
+}
+
 export async function listSweeps(store: Store, profileId?: string | null): Promise<SavedSweep[]> {
   const all = await store.getAll<SavedSweep>("sweeps");
   return all.filter((s) => profileId === undefined || s.profileId === profileId).sort((a, b) => b.takenAt - a.takenAt);
@@ -165,15 +210,19 @@ export async function deleteSweep(store: Store, id: string): Promise<void> {
 
 export async function setBaseline(store: Store, profileId: string, sweep: SavedSweep): Promise<void> {
   const p = await store.get<AntennaProfile>("profiles", profileId);
-  if (!p || !sweep.bandId) return;
-  p.baselines[sweep.bandId] = sweep.id;
+  const key = baselineKey(sweep);
+  if (!p || !key) return;
+  p.baselines[key] = sweep.id;
   await store.put("profiles", p);
 }
 
-/** Newest sweep per band, newest first. */
+/** Newest sweep per band (and for the target, under TARGET_KEY), newest first. */
 export function latestPerBand(sweeps: readonly SavedSweep[]): Map<string, SavedSweep> {
   const out = new Map<string, SavedSweep>();
-  for (const s of [...sweeps].sort((a, b) => b.takenAt - a.takenAt)) if (s.bandId && !out.has(s.bandId)) out.set(s.bandId, s);
+  for (const s of [...sweeps].sort((a, b) => b.takenAt - a.takenAt)) {
+    const key = baselineKey(s);
+    if (key && !out.has(key)) out.set(key, s);
+  }
   return out;
 }
 

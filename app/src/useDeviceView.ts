@@ -15,4 +15,4 @@ export function useDeviceView(view: DisplayView | null): void {
 }
 
 /** Screens that set the device's view themselves; everywhere else the device is let go. */
-export const MIRRORED_ROUTES: ReadonlySet<string> = new Set(["check", "advanced", "tune", "meter"]);
+export const MIRRORED_ROUTES: ReadonlySet<string> = new Set(["check", "advanced", "tune", "meter", "find"]);

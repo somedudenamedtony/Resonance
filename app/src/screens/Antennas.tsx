@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { type AntennaType, findBand, scanRangeFor, swrSeries, US_BAND_PLAN } from "@resonance/analysis";
 import { SwrChart } from "../components/SwrChart";
 import { BAND_ORDER, bandsById } from "../check";
+import { formatHz, parseMhz } from "../find";
 import {
   type AntennaProfile,
   createProfile,
@@ -12,6 +13,8 @@ import {
   listSweeps,
   type SavedSweep,
   setBaseline,
+  TARGET_KEY,
+  baselineKey,
   toSweep,
 } from "../history";
 import { checkProfileId, go, profiles, refreshProfiles, store } from "../state";
@@ -99,6 +102,15 @@ export function Antennas() {
                         </span>
                       );
                     })}
+                    {p.targetHz && (
+                      <span class={`band-chip ${info?.bySweep.get(TARGET_KEY)?.summary.level ?? "none"}`}>
+                        {formatHz(p.targetHz)}{" "}
+                        {(() => {
+                          const level = info?.bySweep.get(TARGET_KEY)?.summary.level;
+                          return level ? LEVEL_WORD[level] : "not checked";
+                        })()}
+                      </span>
+                    )}
                   </span>
                 </button>
               </li>
@@ -114,13 +126,17 @@ function AddAntenna(props: { first: boolean; onDone: (p: AntennaProfile | null) 
   const [name, setName] = useState("");
   const [type, setType] = useState<AntennaType>("dipole");
   const [bands, setBands] = useState<string[]>(["20m"]);
+  const [other, setOther] = useState(false);
+  const [target, setTarget] = useState("");
   const [error, setError] = useState<string | null>(null);
   const toggle = (id: string) => setBands(bands.includes(id) ? bands.filter((b) => b !== id) : [...bands, id]);
 
   const save = async () => {
     try {
       const ordered = BAND_ORDER.filter((b) => bands.includes(b));
-      props.onDone(await createProfile(store, { name, type, bands: ordered }));
+      const targetHz = other ? parseMhz(target) : undefined;
+      if (other && !targetHz) throw new Error("Enter the frequency it's for in MHz, like 1090.");
+      props.onDone(await createProfile(store, { name, type, bands: ordered, targetHz }));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -148,7 +164,22 @@ function AddAntenna(props: { first: boolean; onDone: (p: AntennaProfile | null) 
             <strong>{b.name}</strong>
           </button>
         ))}
+        <button class={`band${other ? " selected" : ""}`} aria-pressed={other} onClick={() => (setOther(!other), setError(null))}>
+          <strong>Other</strong>
+        </button>
       </div>
+      {other && (
+        <label class="field">
+          <span>Frequency it's for, MHz</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="1090"
+            value={target}
+            onInput={(e) => (setTarget((e.target as HTMLInputElement).value), setError(null))}
+          />
+        </label>
+      )}
       {error && (
         <p class="field-error" role="alert">
           {error}
@@ -209,23 +240,34 @@ export function Profile({ id }: { id: string }) {
           All
         </button>
       </div>
-      <p class="muted">{TYPE_LABEL[p.type]}</p>
+      <p class="muted">
+        {TYPE_LABEL[p.type]}
+        {p.targetHz ? `, for ${formatHz(p.targetHz)}` : ""}
+      </p>
 
-      <div class="actions single">
-        <button
-          class="btn primary"
-          onClick={() => {
-            checkProfileId.value = p.id;
-            go({ name: "check" });
-          }}
-        >
-          Check this antenna
-        </button>
+      <div class={`actions${p.bands.length && p.targetHz ? "" : " single"}`}>
+        {p.bands.length > 0 && (
+          <button
+            class="btn primary"
+            onClick={() => {
+              checkProfileId.value = p.id;
+              go({ name: "check" });
+            }}
+          >
+            Check this antenna
+          </button>
+        )}
+        {p.targetHz && (
+          <button class={`btn${p.bands.length ? "" : " primary"}`} onClick={() => go({ name: "find", targetHz: p.targetHz, profileId: p.id })}>
+            Find resonance
+          </button>
+        )}
       </div>
 
       {pair.length === 2 ? (
         <BandCard
-          title={`Comparing ${findBand(US_BAND_PLAN, pair[0]!.bandId!)?.name}`}
+          title={`Comparing ${pair[0]!.bandId ? findBand(US_BAND_PLAN, pair[0]!.bandId)?.name : p.targetHz ? formatHz(p.targetHz) : "searches"}`}
+          targetHz={p.targetHz}
           latest={pair[0]!.takenAt > pair[1]!.takenAt ? pair[0]! : pair[1]!}
           base={pair[0]!.takenAt > pair[1]!.takenAt ? pair[1]! : pair[0]!}
           baseLabel="Earlier"
@@ -246,6 +288,20 @@ export function Profile({ id }: { id: string }) {
           );
         })
       )}
+      {pair.length !== 2 &&
+        p.targetHz &&
+        (() => {
+          const s = latest.get(TARGET_KEY);
+          const base = p.baselines[TARGET_KEY] ? byId.get(p.baselines[TARGET_KEY]!) : undefined;
+          return s ? (
+            <BandCard title={formatHz(p.targetHz)} latest={s} base={base && base.id !== s.id ? base : undefined} baseLabel="Baseline" targetHz={p.targetHz} />
+          ) : (
+            <div class="band-card empty">
+              <strong>{formatHz(p.targetHz)}</strong>
+              <span class="muted">Not checked yet</span>
+            </div>
+          );
+        })()}
 
       <h3 class="section-title">History</h3>
       {sweeps.length === 0 ? (
@@ -255,12 +311,21 @@ export function Profile({ id }: { id: string }) {
           <p class="muted small">Tap two sweeps of the same band to compare them.</p>
           <ul class="history">
             {sweeps.map((s) => {
-              const isBase = s.bandId ? p.baselines[s.bandId] === s.id : false;
+              const key = baselineKey(s);
+              const isBase = key ? p.baselines[key] === s.id : false;
               return (
                 <li key={s.id} class={compare.includes(s.id) ? "picked" : ""}>
                   <button class="history-main" aria-pressed={compare.includes(s.id)} onClick={() => toggleCompare(s)}>
                     <span class="num">{when(s.takenAt)}</span>
-                    <strong>{s.bandId ? (findBand(US_BAND_PLAN, s.bandId)?.name ?? s.bandId) : "Sweep"}</strong>
+                    <strong>
+                      {s.bandId
+                        ? (findBand(US_BAND_PLAN, s.bandId)?.name ?? s.bandId)
+                        : s.job === "find"
+                          ? p.targetHz
+                            ? formatHz(p.targetHz)
+                            : formatHz(s.summary.minSwrHz)
+                          : "Sweep"}
+                    </strong>
                     <span class={`all-chip level-${s.summary.level ?? "none"}`}>{s.summary.level ? LEVEL_WORD[s.summary.level] : ""}</span>
                     <span class="muted num">{s.summary.minSwr > 10 ? ">10" : s.summary.minSwr.toFixed(2)}:1</span>
                   </button>
@@ -314,7 +379,7 @@ export function Profile({ id }: { id: string }) {
   );
 }
 
-function BandCard(props: { title: string; latest: SavedSweep; base?: SavedSweep; baseLabel: string }) {
+function BandCard(props: { title: string; latest: SavedSweep; base?: SavedSweep; baseLabel: string; targetHz?: number }) {
   const { latest, base } = props;
   const band = latest.bandId ? findBand(US_BAND_PLAN, latest.bandId) : undefined;
   const range = band ? scanRangeFor(band) : { startHz: latest.freqHz[0]!, stopHz: latest.freqHz.at(-1)! };
@@ -339,6 +404,8 @@ function BandCard(props: { title: string; latest: SavedSweep; base?: SavedSweep;
           swr={swrSeries(sw)}
           band={band}
           min={{ freqHz: latest.summary.minSwrHz, swr: latest.summary.minSwr }}
+          target={band ? undefined : props.targetHz}
+          edges={!band}
           overlays={base ? [{ freqHz: base.freqHz, swr: swrSeries(toSweep(base)), label: `${props.baseLabel}, ${when(base.takenAt)}` }] : undefined}
           cursor
         />

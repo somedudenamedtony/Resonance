@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { type AntennaType, type Band } from "@resonance/analysis";
+import { type AntennaType, type Band, MIN_SCAN_HZ } from "@resonance/analysis";
 import { SimulatedTransport } from "../bridge/simulator";
 import { BAND_ORDER, bandsById } from "../check";
+import { deviceMaxHz, formatHz, parseMhz } from "../find";
 import { formatLength, parseLength } from "../history";
 import { bandView, tuneView } from "../mirror";
 import { useDeviceView } from "../useDeviceView";
@@ -18,31 +19,48 @@ const TYPES: { id: AntennaType; label: string; element: string }[] = [
 
 const LIVE_INTERVAL_MS = 2000;
 
-export function Tune() {
+/** Band id for a target outside the ham bands (any frequency the NanoVNA reaches). */
+const OTHER = "other";
+
+/** A stand-in band for an off-band target, so the coach can treat it like any other. */
+const otherBand = (targetHz: number): Band => ({ id: OTHER, name: formatHz(targetHz), startHz: targetHz, stopHz: targetHz });
+
+export function Tune({ targetHz }: { targetHz?: number }) {
   const [setup, setSetup] = useState<TuneSetup | null>(null);
-  return setup ? <Coach setup={setup} onEdit={() => setSetup(null)} /> : <Setup onStart={setSetup} />;
+  return setup ? <Coach setup={setup} onEdit={() => setSetup(null)} /> : <Setup onStart={setSetup} targetHz={targetHz} />;
 }
 
-function Setup({ onStart }: { onStart: (s: TuneSetup) => void }) {
+function Setup({ onStart, targetHz }: { onStart: (s: TuneSetup) => void; targetHz?: number }) {
   const bands = bandsById(BAND_ORDER).filter((b) => b.id !== "2m");
-  const [band, setBand] = useState<Band>(bands[0]!);
-  const [type, setType] = useState<AntennaType>("dipole");
-  const [target, setTarget] = useState(((band.startHz + band.stopHz) / 2e6).toFixed(3));
+  // A target from elsewhere (e.g. Find resonance) picks its ham band, or "Other" when it's in none.
+  const fromTarget = targetHz !== undefined ? (bands.find((b) => targetHz >= b.startHz && targetHz <= b.stopHz) ?? null) : undefined;
+  const [band, setBand] = useState<Band | null>(fromTarget === undefined ? bands[0]! : fromTarget);
+  const [type, setType] = useState<AntennaType>(targetHz !== undefined && fromTarget === null ? "vertical" : "dipole");
+  const [target, setTarget] = useState(
+    targetHz !== undefined ? String(targetHz / 1e6) : ((bands[0]!.startHz + bands[0]!.stopHz) / 2e6).toFixed(3),
+  );
   const [length, setLength] = useState("");
   const [error, setError] = useState<string | null>(null);
   const element = TYPES.find((t) => t.id === type)!.element;
   const unitWord = settings.value.units === "imperial" ? "feet" : "meters";
-  useDeviceView(bandView(band));
+  const maxHz = deviceMaxHz(device.value);
+  const typedHz = parseMhz(target);
+  useDeviceView(band ? bandView(band) : typedHz && typedHz <= maxHz ? tuneView(typedHz, null) : null);
 
-  const pickBand = (b: Band) => {
+  const pickBand = (b: Band | null) => {
     setBand(b);
-    setTarget(((b.startHz + b.stopHz) / 2e6).toFixed(3));
+    if (b) setTarget(((b.startHz + b.stopHz) / 2e6).toFixed(3));
     setError(null);
   };
 
   const start = () => {
     const mhz = Number(target);
-    if (!Number.isFinite(mhz) || mhz * 1e6 < band.startHz * 0.9 || mhz * 1e6 > band.stopHz * 1.1) {
+    if (!band) {
+      if (!typedHz || typedHz < MIN_SCAN_HZ || typedHz > maxHz) {
+        setError(`Enter the frequency it's for in MHz, between ${formatHz(MIN_SCAN_HZ)} and ${formatHz(maxHz)}.`);
+        return;
+      }
+    } else if (!Number.isFinite(mhz) || mhz * 1e6 < band.startHz * 0.9 || mhz * 1e6 > band.stopHz * 1.1) {
       setError(`Enter a target near ${band.name}, between ${(band.startHz / 1e6).toFixed(3)} and ${(band.stopHz / 1e6).toFixed(3)} MHz.`);
       return;
     }
@@ -51,7 +69,8 @@ function Setup({ onStart }: { onStart: (s: TuneSetup) => void }) {
       setError(`Enter the length in ${unitWord}, or leave it blank to estimate it.`);
       return;
     }
-    onStart({ ...defaultSetup(band, type), targetHz: Math.round(mhz * 1e6), elementLengthM: len });
+    const hz = band ? Math.round(mhz * 1e6) : typedHz!;
+    onStart({ ...defaultSetup(band ?? otherBand(hz), type), targetHz: hz, elementLengthM: len });
   };
 
   return (
@@ -66,10 +85,13 @@ function Setup({ onStart }: { onStart: (s: TuneSetup) => void }) {
       <h3 class="section-title first">Band</h3>
       <div class="bands">
         {bands.map((b) => (
-          <button key={b.id} class={`band${b.id === band.id ? " selected" : ""}`} aria-pressed={b.id === band.id} onClick={() => pickBand(b)}>
+          <button key={b.id} class={`band${b.id === band?.id ? " selected" : ""}`} aria-pressed={b.id === band?.id} onClick={() => pickBand(b)}>
             <strong>{b.name}</strong>
           </button>
         ))}
+        <button class={`band${band === null ? " selected" : ""}`} aria-pressed={band === null} onClick={() => pickBand(null)}>
+          <strong>Other</strong>
+        </button>
       </div>
 
       <h3 class="section-title">Antenna</h3>
@@ -82,7 +104,7 @@ function Setup({ onStart }: { onStart: (s: TuneSetup) => void }) {
       </div>
 
       <label class="field">
-        <span>Target frequency, MHz</span>
+        <span>{band ? "Target frequency, MHz" : "Frequency it's for, MHz"}</span>
         <input type="text" inputMode="decimal" value={target} onInput={(e) => (setTarget((e.target as HTMLInputElement).value), setError(null))} />
       </label>
       <label class="field">
@@ -188,7 +210,7 @@ function Coach({ setup, onEdit }: { setup: TuneSetup; onEdit: () => void }) {
         </button>
       </div>
       <p class="muted">
-        {setup.band.name} {typeLabel}, target {mhz(setup.targetHz)} MHz
+        {setup.band.id === OTHER ? TYPES.find((t) => t.id === setup.type)!.label : `${setup.band.name} ${typeLabel}`}, target {mhz(setup.targetHz)} MHz
       </p>
 
       {!r ? (
