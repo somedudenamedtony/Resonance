@@ -11,6 +11,7 @@ import {
 import { SimulatedTransport } from "../bridge/simulator";
 import { applyCalibration, CAL_RANGE } from "../cal";
 import { calibration, client, device, go, isSimulator, link, settings } from "../state";
+import { LearnLink } from "./Learn";
 
 type FarEnd = "open" | "connected";
 
@@ -99,6 +100,9 @@ export function Coax() {
 
       {(phase.kind === "setup" || phase.kind === "error") && (
         <>
+          <p class="learn-links">
+            <LearnLink topic="coax">Velocity factor and loss, explained</LearnLink>
+          </p>
           <label class="field compact">
             <span>Cable type</span>
             <select value={setup.typeId} onChange={(e) => setSetup({ ...setup, typeId: (e.target as HTMLSelectElement).value })}>

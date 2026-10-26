@@ -17,6 +17,8 @@ export const DEFAULT_THRESHOLDS: SwrThresholds = { good: 1.5, usable: 2.0 };
 export interface Segment {
   readonly startHz: number;
   readonly stopHz: number;
+  /** What the user calls this part of the band, e.g. "CW" or "digital". */
+  readonly label?: string;
 }
 
 export interface CheckResult {
@@ -30,6 +32,8 @@ export interface CheckResult {
   readonly cause: Cause | null;
   readonly causeText: string | null;
   readonly maxSwrInBand: number;
+  /** The part of the band the verdict judged, when narrower than the whole band. */
+  readonly segment: Segment | null;
   readonly metrics: SweepMetrics;
 }
 
@@ -51,8 +55,15 @@ export function maxSwrIn(freqHz: readonly number[], swrs: readonly number[], sta
   return max;
 }
 
+/** What the verdict judged: the whole band, or the user's part of it. */
+interface Target {
+  readonly name: string;
+  readonly startHz: number;
+  readonly stopHz: number;
+}
+
 function diagnose(
-  band: Band,
+  band: Target,
   m: SweepMetrics,
   thresholds: SwrThresholds,
 ): { cause: Cause | null; text: string | null } {
@@ -106,45 +117,46 @@ function diagnose(
 
 /**
  * Verdict for one band. The sweep should cover the band (see `scanRangeFor`).
- * `segment` optionally narrows "usable" to the part of the band the user operates in.
+ * `segment` narrows the verdict to the part of the band the user operates in: the level is
+ * judged there, and the detail says how the rest of the band looks.
  */
 export function checkBand(
   sweep: Sweep,
   band: Band,
-  options: { thresholds?: SwrThresholds; segment?: Segment } = {},
+  options: { thresholds?: SwrThresholds; segment?: Segment | null } = {},
 ): CheckResult {
   const thresholds = options.thresholds ?? DEFAULT_THRESHOLDS;
   const metrics = analyze(sweep);
   const maxInBand = maxSwrIn(sweep.freqHz, metrics.swr, band.startHz, band.stopHz);
-  const seg = options.segment;
-  const maxInSegment = seg ? maxSwrIn(sweep.freqHz, metrics.swr, seg.startHz, seg.stopHz) : null;
+  const seg = options.segment ?? null;
+  const judged = seg ? maxSwrIn(sweep.freqHz, metrics.swr, seg.startHz, seg.stopHz) : maxInBand;
 
-  let level: VerdictLevel;
-  if (maxInBand <= thresholds.good) level = "good";
-  else if (maxInBand <= thresholds.usable || (maxInSegment !== null && maxInSegment <= thresholds.good)) level = "usable";
-  else level = "poor";
+  const level: VerdictLevel = judged <= thresholds.good ? "good" : judged <= thresholds.usable ? "usable" : "poor";
 
-  const { cause, text } = level === "good" ? { cause: null, text: null } : diagnose(band, metrics, thresholds);
+  const segName = seg?.label ? `${seg.label} part of ${band.name}` : `your part of ${band.name}`;
+  const target: Target = seg ? { name: `the ${segName}`, startHz: seg.startHz, stopHz: seg.stopHz } : band;
+  const { cause, text } = level === "good" ? { cause: null, text: null } : diagnose(target, metrics, thresholds);
+
+  const where = seg ? (seg.label ? ` for ${seg.label}` : " where you operate") : "";
+  const across = seg ? `in the ${segName}` : "across the whole band";
+  const elsewhere = seg && maxInBand > judged + 0.05 ? `; up to ${fmtSwr(maxInBand)} elsewhere in the band` : "";
 
   let headline: string;
   let detail: string;
   switch (level) {
     case "good":
-      headline = `Good on ${band.name}`;
-      detail = `Under ${thresholds.good}:1 across the whole band`;
+      headline = `Good${where} on ${band.name}`;
+      detail = `Under ${thresholds.good}:1 ${across}${elsewhere}`;
       break;
     case "usable":
-      headline = `Usable on ${band.name}`;
-      detail =
-        maxInBand <= thresholds.usable
-          ? `Under ${thresholds.usable}:1, best at ${fmtMHz(metrics.min.freqHz)} MHz`
-          : `Under ${thresholds.good}:1 in your segment, up to ${fmtSwr(maxInBand)} elsewhere`;
+      headline = `Usable${where} on ${band.name}`;
+      detail = `Under ${thresholds.usable}:1 ${across}, best at ${fmtMHz(metrics.min.freqHz)} MHz${elsewhere}`;
       break;
     case "poor":
-      headline = `Poor on ${band.name}`;
-      detail = `Up to ${fmtSwr(maxInBand)} in band, best ${fmtSwr(metrics.min.swr)} at ${fmtMHz(metrics.min.freqHz)} MHz`;
+      headline = `Poor${where} on ${band.name}`;
+      detail = `Up to ${fmtSwr(judged)} ${seg ? `in the ${segName}` : "in band"}, best ${fmtSwr(metrics.min.swr)} at ${fmtMHz(metrics.min.freqHz)} MHz`;
       break;
   }
 
-  return { band, level, headline, detail, cause, causeText: text, maxSwrInBand: maxInBand, metrics };
+  return { band, level, headline, detail, cause, causeText: text, maxSwrInBand: maxInBand, segment: seg, metrics };
 }

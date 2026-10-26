@@ -1,6 +1,8 @@
 import type { CheckResult } from "@resonance/analysis";
 import { useState } from "preact/hooks";
 import { EXPLAIN_BANDWIDTH, EXPLAIN_RESONANCE, explainSwr } from "../check";
+import type { LearnTopic } from "../learn";
+import { LearnLink } from "../screens/Learn";
 import { go } from "../state";
 
 const LEVEL_TEXT = { good: "Good", usable: "Usable", poor: "Needs work" } as const;
@@ -15,7 +17,12 @@ export function Verdict({ result, calibrated }: { result: CheckResult; calibrate
       </span>
       <h1>{result.headline}</h1>
       <p class="detail">{result.detail}</p>
-      {result.causeText && <p class="cause">{result.causeText}</p>}
+      {result.causeText && (
+        <p class="cause">
+          {result.causeText}{" "}
+          {result.cause && <LearnLink topic={result.cause === "mismatch" ? "impedance" : "resonance"}>Why?</LearnLink>}
+        </p>
+      )}
       {!calibrated && (
         <p class="uncal">
           <span class="badge">Uncalibrated</span>
@@ -38,6 +45,7 @@ export function Readings({ result }: { result: CheckResult }) {
   const toggle = (k: Explained) => setOpen(open === k ? null : k);
   const text =
     open === "swr" ? explainSwr(m.min.swr) : open === "res" ? EXPLAIN_RESONANCE : open === "bw" ? EXPLAIN_BANDWIDTH : null;
+  const topic: LearnTopic = open === "res" ? "resonance" : open === "bw" ? "bandwidth" : "swr";
   return (
     <>
       <div class="readings">
@@ -59,7 +67,7 @@ export function Readings({ result }: { result: CheckResult }) {
       </div>
       {text ? (
         <p class="explain" aria-live="polite">
-          {text}
+          {text} <LearnLink topic={topic}>More in Learn</LearnLink>
         </p>
       ) : (
         <p class="explain-hint muted">Tap a reading to see what it means.</p>

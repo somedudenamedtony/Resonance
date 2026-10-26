@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { abs, arg, impedance, returnLoss, swr, type Sweep, toCsv, toTouchstone } from "@resonance/analysis";
 import { go, lastCheck } from "../state";
+import { LearnLink } from "./Learn";
 
 export function Advanced() {
   const last = lastCheck.value;
@@ -96,6 +97,10 @@ function AdvancedView({ sweep, title, band }: { sweep: Sweep; title: string; ban
           <dd>{equiv}</dd>
         </div>
       </dl>
+      <p class="learn-links">
+        <LearnLink topic="smith">Reading the Smith chart</LearnLink>
+        <LearnLink topic="impedance">What R and X mean</LearnLink>
+      </p>
 
       <h3 class="section-title">Resistance and reactance</h3>
       <div class="chart">

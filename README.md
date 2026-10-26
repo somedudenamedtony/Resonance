@@ -84,6 +84,11 @@ calibration math validated end to end against emulated raw data.
 - [x] Guided Calibrate screen: open/short/load, pictures, wrong-standard rejection
 - [x] Check applies calibration; Uncalibrated badge links to Calibrate; Home nudge
 - [x] Scan all bands (160m–6m) with one-line verdicts; tap-to-explain readings
+- [x] Judge where you operate: CW, FT8 / FT4 or SSB sub-bands (`segmentFor` in `analysis/src/bands.ts`),
+      saved in settings, switchable on a result without rescanning; segment shaded on the chart
+- [x] Drag (or arrow keys) across the SWR chart to read any frequency, with the baseline's value too
+- [x] Learn screen (SWR, resonance, R and X, return loss, Smith chart, calibration, coax, tuners),
+      linked from readings, verdict causes and each tool; three-card quick start on first launch
 - [x] Tests: guided calibration vs simulator and vs the C bridge + emulator
 - [ ] Hardware: verdicts match NanoVNA-Saver within ±0.05 SWR on three antennas
 

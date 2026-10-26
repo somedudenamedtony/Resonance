@@ -14,6 +14,7 @@ import {
   type Settings,
   type Theme,
 } from "./history";
+import type { LearnTopic } from "./learn";
 import { MemoryStore, openStore, type Store } from "./storage";
 
 /**
@@ -45,6 +46,7 @@ export type Route =
   | { name: "settings" }
   | { name: "coax" }
   | { name: "advanced" }
+  | { name: "learn"; topic?: LearnTopic; back?: Route }
   | { name: "soon"; job: string; milestone: string };
 
 export const client = new BridgeClient(chooseTransport());
@@ -88,6 +90,8 @@ export async function saveCalibration(saved: SavedCalibration): Promise<void> {
 }
 
 export const settings = signal<Settings>(DEFAULT_SETTINGS);
+/** False until settings come back from storage, so first-run UI doesn't flash for returning users. */
+export const settingsLoaded = signal(false);
 export const profiles = signal<AntennaProfile[]>([]);
 /** Antenna the next check is for; null = quick check. */
 export const checkProfileId = signal<string | null>(null);
@@ -112,6 +116,7 @@ export async function clearCalibration(): Promise<void> {
 
 export async function reloadFromStore(): Promise<void> {
   settings.value = await loadSettings(store);
+  settingsLoaded.value = true;
   applyTheme(settings.value.theme);
   await refreshProfiles();
   const pointer = await store.get<{ id: string; value: string }>("kv", ACTIVE_CAL_KEY);

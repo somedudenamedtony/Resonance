@@ -3,6 +3,7 @@ import type { StandardKind } from "@resonance/analysis";
 import { SimulatedTransport } from "../bridge/simulator";
 import { CAL_STEPS, CalibrationSession, saveForm } from "../cal";
 import { client, device, go, isSimulator, link, saveCalibration } from "../state";
+import { LearnLink } from "./Learn";
 
 const STEP_TEXT: Record<StandardKind, { title: string; how: string }> = {
   open: { title: "Open", how: "Screw the OPEN standard onto port 1 (CH0). If your kit has no open, leave the port empty." },
@@ -74,6 +75,9 @@ export function Calibrate() {
         </button>
       </div>
 
+      <p class="learn-links">
+        <LearnLink topic="calibration">Why calibrate?</LearnLink>
+      </p>
       <ol class="steps" aria-label="Calibration steps">
         {CAL_STEPS.map((k, i) => (
           <li key={k} class={i < step ? "done" : i === step ? "current" : ""} aria-current={i === step ? "step" : undefined}>

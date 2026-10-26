@@ -7,6 +7,7 @@ import { Check } from "./screens/Check";
 import { Coax } from "./screens/Coax";
 import { Connect } from "./screens/Connect";
 import { Home } from "./screens/Home";
+import { Learn } from "./screens/Learn";
 import { Meter } from "./screens/Meter";
 import { Settings } from "./screens/Settings";
 import { Tune } from "./screens/Tune";
@@ -32,6 +33,7 @@ export function App() {
         {r.name === "settings" && <Settings />}
         {r.name === "coax" && <Coax />}
         {r.name === "advanced" && <Advanced />}
+        {r.name === "learn" && <Learn topic={r.topic} back={r.back} />}
         {r.name === "soon" && <Soon job={r.job} milestone={r.milestone} />}
       </main>
       <nav class="tabbar" aria-label="Main">
