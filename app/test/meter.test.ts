@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { frequencyGrid, IDENTITY_TERMS, rlcGamma, US_BAND_PLAN } from "@resonance/analysis";
+import { frequencyGrid, IDENTITY_TERMS, rlcGamma, swr, US_BAND_PLAN } from "@resonance/analysis";
 import { BridgeClient } from "../src/bridge/client";
 import { SimulatedTransport } from "../src/bridge/simulator";
-import { bandOf, METER_POINTS, meterRange, MeterSession, needleFraction, presetsFor, readMeter } from "../src/meter";
+import { checkOneBand } from "../src/check";
+import { bandOf, METER_POINTS, meterRange, MeterSession, needleFraction, presetsFor, readMeter, simTunerAntenna } from "../src/meter";
 
 async function simClient() {
   const sim = new SimulatedTransport();
@@ -61,6 +62,35 @@ describe("meter against the simulator", () => {
     s.resetBest();
     expect(s.best).toBe(s.reading);
     expect(s.history).toHaveLength(3);
+    client.stop();
+  });
+});
+
+describe("meter agrees with a sweep", () => {
+  it("reads the same SWR as a band check at the same frequency", async () => {
+    const { client } = await simClient();
+    const b20 = US_BAND_PLAN.bands.find((b) => b.id === "20m")!;
+    const check = await checkOneBand(client, b20, null);
+    const i = check.sweep.freqHz.reduce((best, f, j, fs) => (Math.abs(f - 14.074e6) < Math.abs(fs[best]! - 14.074e6) ? j : best), 0);
+    const swept = swr(check.sweep.s11[i]!);
+    const r = await new MeterSession(14.074e6, () => null).measure(client);
+    expect(swept).toBeLessThan(1.3);
+    expect(r.swr).toBeCloseTo(swept, 1);
+    client.stop();
+  });
+
+  it("leaves the simulated antenna alone with the tuner knob centered", async () => {
+    // The knob used to start off center at a fixed detuned antenna, which read 3.08 (85−j69 Ω)
+    // at 14.074 MHz while a sweep of the real antenna read about 1.1.
+    const { sim, client } = await simClient();
+    const base = sim.antenna;
+    expect(simTunerAntenna(base, 0)).toBe(base);
+    sim.configure({ antenna: simTunerAntenna(base, 0) });
+    const centered = await new MeterSession(14.074e6, () => null).measure(client);
+    expect(centered.swr).toBeLessThan(1.3);
+    sim.configure({ antenna: simTunerAntenna(base, 70) });
+    const turned = await new MeterSession(14.074e6, () => null).measure(client);
+    expect(turned.swr).toBeGreaterThan(2);
     client.stop();
   });
 });

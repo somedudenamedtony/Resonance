@@ -2,7 +2,17 @@
  * Live SWR meter: SWR at one frequency, re-measured as fast as the NanoVNA allows, for
  * adjusting an antenna tuner. UI-free so tests can drive it.
  */
-import { type Band, bandCenterHz, type Calibration, type Complex, impedance, returnLoss, swr, type Sweep } from "@resonance/analysis";
+import {
+  type Band,
+  bandCenterHz,
+  type Calibration,
+  type Complex,
+  impedance,
+  returnLoss,
+  type RlcAntenna,
+  swr,
+  type Sweep,
+} from "@resonance/analysis";
 import type { BridgeClient } from "./bridge/client";
 import { applyCalibration } from "./cal";
 
@@ -92,6 +102,15 @@ export class MeterSession {
   }
 }
 
+/**
+ * Simulator only: the pretend antenna for a tuner knob position, -100..100. Centered (0) it is
+ * the antenna as connected, so the meter agrees with a sweep of it; turning either way moves its
+ * resonance and raises its resistance, like a tuner knob off its best spot.
+ */
+export function simTunerAntenna(base: RlcAntenna, knob: number): RlcAntenna {
+  if (knob === 0) return base;
+  return { ...base, f0Hz: base.f0Hz * (1 + knob / 1000), r: base.r + Math.abs(knob) / 2 };
+}
 
 export interface MeterPreset {
   label: string;
