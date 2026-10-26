@@ -55,7 +55,7 @@ es_port_z = 3.2;      // port center above PCB bottom
 // 3 LEDs 19.75 mm from the port end, 6–11 mm from the edge (measured)
 // y is measured from the GND/TX edge (the right edge with ports toward you, top side up)
 es_leds = [for (d = [6, 8.5, 11]) [19.75, d]];
-es_rgb = [20.3, es_w - 8.9];  // the big RGB LED, near the 3V3 edge (from photo)
+es_rgb = [18.8, es_w - 8.9];  // the big RGB LED, near the 3V3 edge (moved 1.5 mm toward the ports after test fit)
 es_light_groups = [es_leds, [es_rgb]];
 
 // Case
