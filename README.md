@@ -125,6 +125,7 @@ calibration math validated end to end against emulated raw data.
 - [x] Device screen: `capture` streamed by the bridge (C core streaming mode, 4 KB frames
       of kind 0x03), shown on the Connection screen; C, app and end-to-end tests
 - [x] Updates over Wi-Fi: Settings → Update the bridge (firmware `resonance-bridge.bin` or web app `littlefs.bin` from the CI artifact), plus a built-in `/update` recovery page
+- [x] Updates from GitHub: in bridge mode the bridge checks releases and installs firmware + app in one tap; new firmware rolls back if it can't get back on Wi-Fi; CI publishes a release whenever `RC_BRIDGE_VERSION` changes
 
 ### Trying the app
 

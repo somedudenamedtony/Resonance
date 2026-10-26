@@ -13,6 +13,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "nvs.h"
+#include "ota.h"
 
 static const char *TAG = "wifi";
 static const char *NS = "resonance";
@@ -97,6 +98,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         s_status.reason[0] = 0;
         taskEXIT_CRITICAL(&s_lock);
         ESP_LOGI(TAG, "joined home Wi-Fi as %s", ip);
+        ota_mark_healthy("joined home Wi-Fi");
     } else if (base == IP_EVENT && id == IP_EVENT_STA_LOST_IP) {
         taskENTER_CRITICAL(&s_lock);
         if (s_status.state == RC_WIFI_CONNECTED) s_status.state = RC_WIFI_CONNECTING;

@@ -16,5 +16,11 @@ CONFIG_HTTPD_WS_SUPPORT=y
 CONFIG_HTTPD_MAX_URI_LEN=256
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 
+# Updates: a new firmware that never gets back on Wi-Fi is undone by the bootloader.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# HTTPS to GitHub for release downloads
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+
 # Plain logs: Windows terminals show color codes as garbage
 CONFIG_LOG_COLORS=n

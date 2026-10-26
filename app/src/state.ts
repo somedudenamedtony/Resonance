@@ -1,9 +1,9 @@
 import { computed, signal } from "@preact/signals";
 import type { Calibration, CheckResult, Sweep } from "@resonance/analysis";
 import { BridgeClient, type LinkState } from "./bridge/client";
-import type { DeviceStatus, WifiStatus } from "./bridge/protocol";
+import type { DeviceStatus, ReleaseUpdateStatus, WifiStatus } from "./bridge/protocol";
 import { SimulatedTransport } from "./bridge/simulator";
-import { type Transport, WebSocketTransport } from "./bridge/transport";
+import { isBridgeHost, type Transport, WebSocketTransport } from "./bridge/transport";
 import { calState, loadForm, type SavedCalibration } from "./cal";
 import {
   type AntennaProfile,
@@ -29,8 +29,7 @@ export function chooseTransport(loc: Location = window.location): Transport {
   const explicit = params.get("bridge");
   if (explicit) return new WebSocketTransport(explicit);
   if (params.has("sim")) return new SimulatedTransport();
-  const bridgeHosts = ["192.168.4.1", "resonance.local"];
-  if (bridgeHosts.includes(loc.hostname)) return new WebSocketTransport(`ws://${loc.host}/ws`);
+  if (isBridgeHost(loc.hostname)) return new WebSocketTransport(`ws://${loc.host}/ws`);
   return new SimulatedTransport();
 }
 
@@ -55,6 +54,7 @@ export const isSimulator = client.transport instanceof SimulatedTransport;
 export const link = signal<LinkState>(client.link);
 export const device = signal<DeviceStatus | null>(client.device);
 export const wifi = signal<WifiStatus | null>(client.wifi);
+export const release = signal<ReleaseUpdateStatus | null>(client.release);
 export const route = signal<Route>({ name: "home" });
 
 export interface LastCheck {
@@ -137,6 +137,7 @@ client.onChange = () => {
   link.value = client.link;
   device.value = client.device ? { ...client.device } : null;
   wifi.value = client.wifi ? { ...client.wifi } : null;
+  release.value = client.release ? { ...client.release } : null;
 };
 
 export const go = (r: Route) => {

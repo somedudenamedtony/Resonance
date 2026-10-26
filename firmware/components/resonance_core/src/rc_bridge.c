@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "cJSON.h"
+#include "rc_update.h"
 
 #define PROBE_TIMEOUT_MS 1500
 #define PROBE_RETRY_MS 1000
@@ -125,6 +126,63 @@ static void poll_wifi(rc_bridge_t *b, bool force)
     b->wifi_sent = true;
     b->wifi_next_ms = b->now + RC_WIFI_POLL_MS;
     if (force || changed) send_wifi(b, &st);
+}
+
+static const char *update_state_name(rc_update_state_t s)
+{
+    switch (s) {
+    case RC_UPDATE_CHECKING:
+        return "checking";
+    case RC_UPDATE_CURRENT:
+        return "current";
+    case RC_UPDATE_AVAILABLE:
+        return "available";
+    case RC_UPDATE_INSTALLING:
+        return "installing";
+    case RC_UPDATE_DONE:
+        return "done";
+    case RC_UPDATE_FAILED:
+        return "failed";
+    case RC_UPDATE_IDLE:
+        break;
+    }
+    return "idle";
+}
+
+static void send_update(rc_bridge_t *b, const rc_update_status_t *st)
+{
+    cJSON *o = msg("update");
+    cJSON_AddStringToObject(o, "state", update_state_name(st->state));
+    cJSON_AddStringToObject(o, "current", RC_BRIDGE_VERSION);
+    if (st->latest[0]) cJSON_AddStringToObject(o, "latest", st->latest);
+    if (st->state == RC_UPDATE_INSTALLING) {
+        cJSON_AddStringToObject(o, "step", st->step);
+        cJSON_AddNumberToObject(o, "received", st->received);
+        cJSON_AddNumberToObject(o, "total", st->total);
+    }
+    if (st->state == RC_UPDATE_FAILED && st->message[0]) cJSON_AddStringToObject(o, "message", st->message);
+    if (st->rolled_back[0]) cJSON_AddStringToObject(o, "rolledBack", st->rolled_back);
+    send_json(b, o);
+}
+
+// Same idea as poll_wifi, for the release update. Progress counts as a change.
+static void poll_update(rc_bridge_t *b, bool force)
+{
+    if (!b->io.update_status) return;
+    rc_update_status_t st;
+    memset(&st, 0, sizeof st);
+    b->io.update_status(b->io.user, &st);
+    st.latest[sizeof st.latest - 1] = 0;
+    st.step[sizeof st.step - 1] = 0;
+    st.message[sizeof st.message - 1] = 0;
+    st.rolled_back[sizeof st.rolled_back - 1] = 0;
+    const rc_update_status_t *u = &b->update;
+    bool changed = !b->update_sent || st.state != u->state || st.received != u->received || st.total != u->total ||
+                   strcmp(st.latest, u->latest) != 0 || strcmp(st.step, u->step) != 0 ||
+                   strcmp(st.message, u->message) != 0 || strcmp(st.rolled_back, u->rolled_back) != 0;
+    b->update = st;
+    b->update_sent = true;
+    if (force || changed) send_update(b, &st);
 }
 
 // ---------- info parsing ----------
@@ -248,6 +306,7 @@ void rc_bridge_client_connected(rc_bridge_t *b, uint32_t now_ms)
     b->now = now_ms;
     send_device(b);
     poll_wifi(b, true);
+    poll_update(b, true);
 }
 
 static void ota_fail(rc_bridge_t *b, const char *code, const char *message);
@@ -260,7 +319,11 @@ void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms)
     }
     rc_shell_tick(&b->shell, now_ms);
     pump(b);
-    if ((int32_t)(now_ms - b->wifi_next_ms) >= 0) poll_wifi(b, false);
+    if ((int32_t)(now_ms - b->wifi_next_ms) >= 0) {
+        poll_wifi(b, false);
+        poll_update(b, false);
+        b->wifi_next_ms = now_ms + RC_WIFI_POLL_MS;
+    }
 }
 
 // ---------- jobs ----------
@@ -701,13 +764,6 @@ static void handle_ota_begin(rc_bridge_t *b, const cJSON *o)
     send_json(b, r);
 }
 
-// Cheap sanity check on the first bytes so a wrong file is refused before anything is erased.
-static bool ota_magic_ok(const char *target, const uint8_t *d, size_t n)
-{
-    if (strcmp(target, "firmware") == 0) return n >= 1 && d[0] == 0xE9;  // ESP image header
-    return n >= 16 && memcmp(d + 8, "littlefs", 8) == 0;                 // LittleFS superblock
-}
-
 void rc_bridge_client_binary(rc_bridge_t *b, const uint8_t *data, size_t len, uint32_t now_ms)
 {
     b->now = now_ms;
@@ -727,7 +783,7 @@ void rc_bridge_client_binary(rc_bridge_t *b, const uint8_t *data, size_t len, ui
         ota_fail(b, "bad_request", "The update is larger than announced.");
         return;
     }
-    if (offset == 0 && !ota_magic_ok(b->ota_target, chunk, n)) {
+    if (offset == 0 && !rc_image_magic_ok(b->ota_target, chunk, n)) {
         ota_fail(b, "bad_request",
                  strcmp(b->ota_target, "firmware") == 0 ? "That isn't an ESP32 firmware image (resonance-bridge.bin)."
                                                        : "That isn't a LittleFS web app image (littlefs.bin).");
@@ -754,6 +810,26 @@ void rc_bridge_client_binary(rc_bridge_t *b, const uint8_t *data, size_t len, ui
         cJSON_AddStringToObject(r, "for", "ota.end");
         send_json(b, r);
     }
+}
+
+// update.check / update.install: the platform does the work and reports through `update`.
+static void handle_update(rc_bridge_t *b, bool install)
+{
+    bool (*fn)(void *, char *, size_t) = install ? b->io.update_install : b->io.update_check;
+    if (!fn || !b->io.update_status) {
+        send_error(b, "internal", "This bridge can't update from GitHub. Install the update from a file.", -1);
+        return;
+    }
+    if (install && b->ota_active) {
+        send_error(b, "busy", "An update from a file is already running.", -1);
+        return;
+    }
+    char err[96] = "";
+    if (!fn(b->io.user, err, sizeof err)) {
+        send_error(b, "busy", err[0] ? err : "An update is already running.", -1);
+        return;
+    }
+    poll_update(b, true);
 }
 
 static void handle_wifi(rc_bridge_t *b, const cJSON *o)
@@ -794,6 +870,7 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
     } else if (strcmp(type, "hello") == 0) {
         send_device(b);
         poll_wifi(b, true);
+        poll_update(b, true);
     } else if (strcmp(type, "scan") == 0) {
         handle_scan_msg(b, o);
     } else if (strcmp(type, "cancel") == 0) {
@@ -806,6 +883,10 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
         handle_wifi(b, o);
     } else if (strcmp(type, "ota.begin") == 0) {
         handle_ota_begin(b, o);
+    } else if (strcmp(type, "update.check") == 0) {
+        handle_update(b, false);
+    } else if (strcmp(type, "update.install") == 0) {
+        handle_update(b, true);
     } else {
         send_error(b, "bad_request", "unknown message type", -1);
     }

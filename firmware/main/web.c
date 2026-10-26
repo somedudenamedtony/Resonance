@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "ota.h"
 
 static const char *TAG = "web";
 
@@ -93,6 +94,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
         // Handshake complete.
         add_client(httpd_req_to_sockfd(req));
         bridge_post_client_connected();
+        ota_mark_healthy("an app connected");
         return ESP_OK;
     }
     httpd_ws_frame_t pkt = {0};
@@ -123,6 +125,7 @@ static const char UPDATE_PAGE[] =
     "<p>Pick <b>littlefs.bin</b> (web app) or <b>resonance-bridge.bin</b> (firmware).</p>"
     "<select id=t><option value=app>Web app (littlefs.bin)</option><option value=firmware>Firmware</option></select>"
     "<input type=file id=f><button id=go>Upload</button><progress id=p value=0 max=1></progress><p id=s></p>"
+    "<p>Or, when the bridge is on your home Wi-Fi:</p><button id=gh>Install the latest release from GitHub</button>"
     "<script>"
     "const $=i=>document.getElementById(i);"
     "$('go').onclick=async()=>{const file=$('f').files[0];if(!file)return;"
@@ -136,6 +139,15 @@ static const char UPDATE_PAGE[] =
     "else if(m.type==='ota.ack'){$('p').value=m.received/data.length;if(m.received<data.length)next();}"
     "else if(m.type==='ok'&&m.for==='ota.end'){$('s').textContent='Done. The bridge is restarting; reload in a few seconds.';}"
     "else if(m.type==='error'){$('s').textContent=m.message;}};};"
+    // In bridge mode the bridge can fetch the latest release itself, so a broken app can be
+    // replaced without having the files at hand.
+    "$('gh').onclick=()=>{const ws=new WebSocket('ws://'+location.host+'/ws');let asked=false;"
+    "ws.onmessage=e=>{if(typeof e.data!=='string')return;const m=JSON.parse(e.data);"
+    "if(m.type==='update'){if(!asked){asked=true;ws.send(JSON.stringify({v:1,type:'update.install'}));return;}"
+    "if(m.state==='installing')$('p').value=m.received/m.total;"
+    "$('s').textContent=m.state==='done'?'Done. The bridge is restarting; reload in a minute.':"
+    "m.state==='failed'?m.message:m.state+'...';}"
+    "else if(m.type==='error')$('s').textContent=m.message;};};"
     "</script>";
 
 static esp_err_t update_handler(httpd_req_t *req)

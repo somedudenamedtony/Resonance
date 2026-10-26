@@ -1432,6 +1432,10 @@ input[type="password"] {
   gap: 10px;
 }
 
+.from-file {
+  margin-top: 24px;
+}
+
 .file-btn {
   position: relative;
   display: inline-flex;
