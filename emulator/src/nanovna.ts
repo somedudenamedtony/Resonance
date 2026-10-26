@@ -184,6 +184,8 @@ export class NanoVnaEmulator {
         return;
       case "pause":
       case "resume":
+      case "trace":
+      case "marker":
         return;
       case "sweep":
         if (args.length === 0) this.write(`${this.sweep.start} ${this.sweep.stop} ${this.sweep.points}${NL}`);
@@ -211,7 +213,7 @@ export class NanoVnaEmulator {
   }
 
   private commandList(): string[] {
-    const common = ["scan", "data", "sweep", "pause", "resume", "cal", "capture", "version", "info", "help"];
+    const common = ["scan", "data", "sweep", "pause", "resume", "trace", "marker", "cal", "capture", "version", "info", "help"];
     return this.options.dialect === "nanovna-d" ? [...common, "scan_bin"] : common;
   }
 

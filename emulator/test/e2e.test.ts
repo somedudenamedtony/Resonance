@@ -81,6 +81,42 @@ describe("app ↔ C bridge ↔ emulated NanoVNA", () => {
     expect(bridge.nanovna.history.at(-1)).toMatch(/^scan \d+ \d+ 201 155$/);
   });
 
+  it("puts the app's view on the NanoVNA screen and brings it back after a scan", async () => {
+    const { client, bridge } = await setup();
+    expect(client.canDisplay).toBe(true);
+    const nano = bridge.nanovna;
+    const range = scanRangeFor(band20);
+    client.display({ ...range, markersHz: [14_175_000], traces: ["swr", "smith"] });
+    const sweepCmd = `sweep ${range.startHz} ${range.stopHz} 101`;
+    await waitFor(() => nano.history.at(-1) === "resume", "screen set");
+    const first = nano.history.lastIndexOf(sweepCmd);
+    expect(nano.history.slice(first)).toEqual([
+      sweepCmd,
+      "trace 0 swr 0",
+      "trace 1 smith 0",
+      "trace 2 off",
+      "trace 3 off",
+      "marker off",
+      expect.stringMatching(/^marker 1 \d+$/),
+      "resume",
+    ]);
+
+    // A scan moves the device's sweep; the bridge puts the view back once scans go quiet.
+    await client.scan({ ...range, points: 201 });
+    const afterScan = nano.history.length;
+    await waitFor(
+      () => nano.history.lastIndexOf(sweepCmd) >= afterScan && nano.history.at(-1) === "resume",
+      "view restored",
+      3000,
+    );
+
+    // Letting go just resumes the device's own sweeping.
+    const beforeOff = nano.history.length;
+    client.display(null);
+    await waitFor(() => nano.history.length > beforeOff, "let go");
+    expect(nano.history.slice(beforeOff)).toEqual(["resume"]);
+  });
+
   it("segments scans for classic 101-point firmware and parses text output", async () => {
     const { client, bridge } = await setup({ nanovna: { dialect: "classic" } });
     expect(client.device).toMatchObject({ model: "NanoVNA", maxPoints: 101 });

@@ -70,6 +70,8 @@ static void send_device(rc_bridge_t *b)
         cJSON_AddStringToObject(o, "firmware", b->firmware);
         cJSON_AddNumberToObject(o, "maxPoints", b->max_points);
     }
+    cJSON *features = cJSON_AddArrayToObject(o, "features");
+    cJSON_AddItemToArray(features, cJSON_CreateString("display"));
     cJSON_AddStringToObject(o, "bridgeVersion", RC_BRIDGE_VERSION);
     send_json(b, o);
 }
@@ -276,6 +278,7 @@ static void fail_active_job(rc_bridge_t *b, const char *code, const char *messag
 {
     if (b->job == RC_JOB_SCAN && !b->scan_cancelled) send_error(b, code, message, b->scan.id);
     if (b->job == RC_JOB_RAW || b->job == RC_JOB_CAPTURE) send_error(b, code, message, -1);
+    if (b->job == RC_JOB_DISPLAY) b->disp_dirty = true;  // try again once the device is back
     b->job = RC_JOB_NONE;
     b->job_waiting = false;
 }
@@ -370,6 +373,66 @@ static void start_scan(rc_bridge_t *b, const rc_scan_req_t *req)
     send_json(b, o);
 }
 
+int rc_display_commands(const rc_display_t *d, uint16_t max_points, char cmds[][40], int cap)
+{
+    int n = 0;
+    uint16_t points = max_points < RC_DISPLAY_POINTS ? max_points : RC_DISPLAY_POINTS;
+    if (points < 2) points = 2;
+#define ADD(...)                                    \
+    do {                                            \
+        if (n < cap) snprintf(cmds[n++], 40, __VA_ARGS__); \
+    } while (0)
+    ADD("sweep %lu %lu %u", (unsigned long)d->start_hz, (unsigned long)d->stop_hz, (unsigned)points);
+    if (d->n_traces) {
+        for (int t = 0; t < RC_DISPLAY_MAX_TRACES; t++) {
+            if (t < d->n_traces) ADD("trace %d %s 0", t, d->traces[t]);
+            else ADD("trace %d off", t);
+        }
+    }
+    ADD("marker off");
+    double span = (double)d->stop_hz - (double)d->start_hz;
+    for (int m = 0; m < d->n_markers; m++) {
+        // NanoVNA markers sit on sweep points, so turn the frequency into a point index.
+        double idx = span > 0 ? ((double)d->markers_hz[m] - d->start_hz) / span * (points - 1) : 0;
+        long i = lround(idx);
+        if (i < 0) i = 0;
+        if (i > points - 1) i = points - 1;
+        ADD("marker %d %ld", m + 1, i);
+    }
+    ADD("resume");  // sweep live, so the screen keeps up with the antenna
+#undef ADD
+    return n;
+}
+
+static void send_display_step(rc_bridge_t *b)
+{
+    rc_shell_send(&b->shell, b->disp_cmds[b->disp_step], RC_RESP_TEXT, 0, 0, b->now, RAW_TIMEOUT_MS, on_shell_done, b);
+}
+
+static void start_display(rc_bridge_t *b)
+{
+    if (b->disp_release) {
+        snprintf(b->disp_cmds[0], sizeof b->disp_cmds[0], "resume");
+        b->disp_ncmds = 1;
+    } else {
+        b->disp_ncmds = (uint8_t)rc_display_commands(&b->disp, b->max_points, b->disp_cmds, RC_DISPLAY_MAX_CMDS);
+    }
+    b->disp_dirty = false;
+    b->disp_release = false;
+    b->disp_step = 0;
+    b->job = RC_JOB_DISPLAY;
+    b->job_waiting = false;
+    send_display_step(b);
+}
+
+// A scan moved the device's sweep and left it paused: put the view back once scans go quiet.
+static void display_after_scan(rc_bridge_t *b)
+{
+    if (!b->disp_on) return;
+    b->disp_dirty = true;
+    b->disp_due_ms = b->now + RC_DISPLAY_IDLE_MS;
+}
+
 static void pump(rc_bridge_t *b)
 {
     if (b->shell.busy) return;
@@ -386,12 +449,20 @@ static void pump(rc_bridge_t *b)
         start_scan(b, &b->queued_scan);
     }
     if (b->job == RC_JOB_SCAN && !b->shell.busy) send_scan_segment(b);
+    if (b->job == RC_JOB_NONE && !b->has_queued_scan && b->dev == RC_DEV_READY && b->disp_dirty &&
+        (int32_t)(b->now - b->disp_due_ms) >= 0) {
+        start_display(b);
+    }
 }
 
 static void finish_probe(rc_bridge_t *b)
 {
     b->dev = RC_DEV_READY;
     b->job = RC_JOB_NONE;
+    if (b->disp_on) {
+        b->disp_dirty = true;  // a fresh or reset device: show the view again
+        b->disp_due_ms = b->now;
+    }
     if (!b->model[0]) snprintf(b->model, sizeof b->model, "NanoVNA");
     logf_(b, "NanoVNA ready: %s, firmware %s, %u points, %s scans", b->model, b->firmware, b->max_points,
           b->binary ? "binary" : "text");
@@ -446,6 +517,7 @@ static void emit_points(rc_bridge_t *b, const rc_point_t *pts, size_t n)
 
 static void handle_scan(rc_bridge_t *b, rc_shell_status_t st, const uint8_t *body, size_t len, bool is_text)
 {
+    display_after_scan(b);  // every segment, finished or not, moved the device's sweep
     if (b->scan_cancelled) {
         b->job = RC_JOB_NONE;
         return;
@@ -514,6 +586,25 @@ static void handle_raw(rc_bridge_t *b, rc_shell_status_t st, const char *text)
     cJSON_AddStringToObject(o, "text", trimmed);
     free(trimmed);
     send_json(b, o);
+}
+
+static void handle_display(rc_bridge_t *b, rc_shell_status_t st)
+{
+    if (st == RC_SHELL_TIMEOUT) {
+        b->job = RC_JOB_NONE;
+        b->disp_dirty = b->disp_on;
+        b->disp_due_ms = b->now;
+        start_probe(b, PROBE_RETRY_MS);
+        return;
+    }
+    // Replies are ignored: firmware that lacks a command just prints its usage or "cmd?".
+    b->disp_step++;
+    // Stop early for a waiting scan (it moves the sweep anyway) or a newer view.
+    if (b->disp_step >= b->disp_ncmds || b->has_queued_scan || b->disp_dirty) {
+        b->job = RC_JOB_NONE;
+        return;  // pump() runs the queued scan or the newer view
+    }
+    send_display_step(b);
 }
 
 static void flush_capture(rc_bridge_t *b)
@@ -590,6 +681,9 @@ static void on_shell_done(void *ctx, rc_shell_status_t st, const uint8_t *body, 
     case RC_JOB_RAW:
         handle_raw(b, st, text ? text : "");
         break;
+    case RC_JOB_DISPLAY:
+        handle_display(b, st);
+        break;
     case RC_JOB_CAPTURE:  // handled above
     case RC_JOB_NONE:
         break;
@@ -639,8 +733,9 @@ static void handle_scan_msg(rc_bridge_t *b, const cJSON *o)
     if (shell_free) {
         start_scan(b, &req);
         pump(b);
-    } else if (b->job == RC_JOB_NONE || (b->job == RC_JOB_SCAN && b->scan_cancelled)) {
-        // The previous (cancelled) scan's reply is still draining; run this one next.
+    } else if (b->job == RC_JOB_NONE || b->job == RC_JOB_DISPLAY || (b->job == RC_JOB_SCAN && b->scan_cancelled)) {
+        // The previous (cancelled) scan's reply is still draining, or the screen is being
+        // updated (it stops after the current command); run this one next.
         if (b->has_queued_scan) send_error(b, "busy", "A scan is already queued.", iid);
         else {
             b->queued_scan = req;
@@ -721,6 +816,75 @@ static void handle_capture_msg(rc_bridge_t *b)
     cJSON_AddNumberToObject(o, "height", b->lcd_h);
     cJSON_AddStringToObject(o, "format", "rgb565be");
     send_json(b, o);
+}
+
+static void handle_display_msg(rc_bridge_t *b, const cJSON *o)
+{
+    double start, stop;
+    if (!get_number(o, "startHz", &start) || !get_number(o, "stopHz", &stop) || start < 1 || stop <= start ||
+        stop > 4294967295.0) {
+        send_error(b, "bad_request", "display needs startHz < stopHz", -1);
+        return;
+    }
+    rc_display_t d;
+    memset(&d, 0, sizeof d);
+    d.start_hz = (uint32_t)start;
+    d.stop_hz = (uint32_t)stop;
+    const cJSON *markers = cJSON_GetObjectItemCaseSensitive(o, "markersHz");
+    if (markers) {
+        if (!cJSON_IsArray(markers) || cJSON_GetArraySize(markers) > RC_DISPLAY_MAX_MARKERS) {
+            send_error(b, "bad_request", "markersHz must be a list of up to 4 frequencies", -1);
+            return;
+        }
+        const cJSON *m;
+        cJSON_ArrayForEach(m, markers)
+        {
+            if (!cJSON_IsNumber(m) || m->valuedouble < start || m->valuedouble > stop) {
+                send_error(b, "bad_request", "markers must be inside startHz..stopHz", -1);
+                return;
+            }
+            d.markers_hz[d.n_markers++] = (uint32_t)m->valuedouble;
+        }
+    }
+    // NanoVNA-D trace type names the app may ask for.
+    static const char *allowed[] = {"logmag", "phase", "smith", "polar", "linear", "swr", "real", "imag", "r", "x", "z"};
+    const cJSON *traces = cJSON_GetObjectItemCaseSensitive(o, "traces");
+    if (traces) {
+        int n = cJSON_IsArray(traces) ? cJSON_GetArraySize(traces) : -1;
+        if (n < 1 || n > RC_DISPLAY_MAX_TRACES) {
+            send_error(b, "bad_request", "traces must be a list of 1 to 4 trace formats", -1);
+            return;
+        }
+        const cJSON *t;
+        cJSON_ArrayForEach(t, traces)
+        {
+            bool ok = false;
+            for (size_t i = 0; cJSON_IsString(t) && i < sizeof allowed / sizeof allowed[0]; i++) {
+                if (strcmp(t->valuestring, allowed[i]) == 0) ok = true;
+            }
+            if (!ok) {
+                send_error(b, "bad_request", "unknown trace format", -1);
+                return;
+            }
+            snprintf(d.traces[d.n_traces++], sizeof d.traces[0], "%s", t->valuestring);
+        }
+    }
+    b->disp = d;
+    b->disp_on = true;
+    b->disp_release = false;
+    b->disp_dirty = true;
+    b->disp_due_ms = b->now;
+    pump(b);  // shows it now if the device is idle, otherwise after the current job
+}
+
+static void handle_display_off(rc_bridge_t *b)
+{
+    if (!b->disp_on) return;
+    b->disp_on = false;
+    b->disp_release = true;  // leave the screen as it is, sweeping live again
+    b->disp_dirty = true;
+    b->disp_due_ms = b->now;
+    pump(b);
 }
 
 // ---------- updates over Wi-Fi ----------
@@ -879,6 +1043,10 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
         handle_raw_msg(b, o);
     } else if (strcmp(type, "capture") == 0) {
         handle_capture_msg(b);
+    } else if (strcmp(type, "display") == 0) {
+        handle_display_msg(b, o);
+    } else if (strcmp(type, "display.off") == 0) {
+        handle_display_off(b);
     } else if (strcmp(type, "wifi.set") == 0) {
         handle_wifi(b, o);
     } else if (strcmp(type, "ota.begin") == 0) {

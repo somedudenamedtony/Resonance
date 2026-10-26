@@ -106,6 +106,7 @@ static void execute(fake_nanovna_t *f)
     char *argv[8];
     int argc = 0;
     snprintf(f->last_cmd, sizeof f->last_cmd, "%s", f->line);
+    if (f->nlog < 64) snprintf(f->log[f->nlog++], sizeof f->log[0], "%s", f->line);
     char *save = NULL;
     for (char *t = strtok_r(f->line, " ", &save); t && argc < 8; t = strtok_r(NULL, " ", &save)) argv[argc++] = t;
     if (argc == 0) return;
@@ -126,7 +127,8 @@ static void execute(fake_nanovna_t *f)
             uint8_t b = (i % 100 < 4) ? (uint8_t)"ch> "[i % 100] : (uint8_t)(i * 7);
             out(f, &b, 1);
         }
-    } else if (!strcmp(argv[0], "pause") || !strcmp(argv[0], "resume")) {
+    } else if (!strcmp(argv[0], "pause") || !strcmp(argv[0], "resume") || !strcmp(argv[0], "sweep") ||
+               !strcmp(argv[0], "trace") || !strcmp(argv[0], "marker")) {
         // no output
     } else {
         char m[96];

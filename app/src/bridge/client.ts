@@ -8,6 +8,7 @@ import {
   FRAME_CAPTURE,
   frameKind,
   type DeviceStatus,
+  type DisplayView,
   parseServerMessage,
   PROTOCOL_VERSION,
   type ReleaseUpdateStatus,
@@ -94,6 +95,9 @@ export class BridgeClient {
     reject: (e: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   } | null = null;
+  /** The view the app wants on the NanoVNA's screen, and the one the bridge last got (undefined = unknown). */
+  private displayWanted: DisplayView | null = null;
+  private displaySent: string | null | undefined = undefined;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
@@ -107,6 +111,7 @@ export class BridgeClient {
       this.link = "closed";
       this.device = null;
       this.wifi = null;
+      this.displaySent = undefined;
       this.release = null;
       this.failPending(new BridgeError("disconnected", "Lost the connection to the bridge."));
       this.failUpdate(new BridgeError("disconnected", "Lost the connection during the update."));
@@ -272,6 +277,34 @@ export class BridgeClient {
     });
   }
 
+  /** True when the bridge can drive the NanoVNA's screen (`display`). */
+  get canDisplay(): boolean {
+    return !!this.device?.features?.includes("display");
+  }
+
+  /**
+   * Keep the NanoVNA's own screen on `view`; null lets go and the device sweeps on its own again.
+   * Repeats are dropped, the latest view is resent after a reconnect, and bridges without the
+   * feature are left alone.
+   */
+  display(view: DisplayView | null): void {
+    this.displayWanted = view;
+    this.flushDisplay();
+  }
+
+  private flushDisplay(): void {
+    if (this.link !== "open" || !this.canDisplay) return;
+    const view = this.displayWanted;
+    const key = view ? JSON.stringify(view) : null;
+    if (key === this.displaySent) return;
+    try {
+      this.transport.send(view ? { v: PROTOCOL_VERSION, type: "display", ...view } : { v: PROTOCOL_VERSION, type: "display.off" });
+      this.displaySent = key;
+    } catch {
+      /* link already gone; resent on reconnect */
+    }
+  }
+
   raw(command: string): Promise<string> {
     return new Promise((resolve, reject) => {
       try {
@@ -294,6 +327,7 @@ export class BridgeClient {
       case "device": {
         const { v: _v, type: _t, ...status } = msg;
         this.device = status;
+        this.flushDisplay();
         if (!status.connected) this.failPending(new BridgeError("no_device", "The NanoVNA was disconnected."));
         this.changed();
         break;

@@ -1,3 +1,4 @@
+import { useEffect } from "preact/hooks";
 import { Icon } from "./components/Icon";
 import { StatusBar } from "./components/StatusBar";
 import { Advanced } from "./screens/Advanced";
@@ -11,10 +12,15 @@ import { Learn } from "./screens/Learn";
 import { Meter } from "./screens/Meter";
 import { Settings } from "./screens/Settings";
 import { Tune } from "./screens/Tune";
-import { go, route } from "./state";
+import { MIRRORED_ROUTES } from "./useDeviceView";
+import { client, go, route } from "./state";
 
 export function App() {
   const r = route.value;
+  // Screens with a view set the NanoVNA's screen themselves; elsewhere, let the device go.
+  useEffect(() => {
+    if (!MIRRORED_ROUTES.has(r.name)) client.display(null);
+  }, [r.name]);
   const tab =
     r.name === "antennas" || r.name === "profile" ? "Antennas" : r.name === "settings" ? "Settings" : "Home";
 

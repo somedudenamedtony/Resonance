@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#define RC_BRIDGE_VERSION "0.3.0"
+#define RC_BRIDGE_VERSION "0.4.0"
 #define RC_SHELL_BUF_SIZE 32768
 #define RC_MAX_SCAN_POINTS 10001
 #define RC_MAX_SEGMENT_POINTS 401
@@ -101,6 +101,7 @@ typedef enum {
     RC_JOB_SCAN,
     RC_JOB_RAW,
     RC_JOB_CAPTURE,
+    RC_JOB_DISPLAY,
 } rc_job_t;
 
 typedef struct {
@@ -110,6 +111,23 @@ typedef struct {
     uint32_t points;
     bool s21;
 } rc_scan_req_t;
+
+// What the app wants on the NanoVNA's own screen (`display`). Traces are NanoVNA-D trace type
+// names ("swr", "smith", ...), all on S11.
+#define RC_DISPLAY_MAX_MARKERS 4
+#define RC_DISPLAY_MAX_TRACES 4
+#define RC_DISPLAY_POINTS 101
+#define RC_DISPLAY_IDLE_MS 800  // after a scan, wait this long for the next before redrawing
+#define RC_DISPLAY_MAX_CMDS (2 + RC_DISPLAY_MAX_TRACES + RC_DISPLAY_MAX_MARKERS + 1)
+
+typedef struct {
+    uint32_t start_hz;
+    uint32_t stop_hz;
+    uint32_t markers_hz[RC_DISPLAY_MAX_MARKERS];
+    uint8_t n_markers;
+    char traces[RC_DISPLAY_MAX_TRACES][8];
+    uint8_t n_traces;
+} rc_display_t;
 
 typedef struct rc_bridge {
     rc_bridge_io_t io;
@@ -147,6 +165,17 @@ typedef struct rc_bridge {
 
     // Raw
     char raw_cmd[64];
+
+    // Display: the view to keep on the device screen. Scans move the device's sweep, so the
+    // view is put back once the app's scans go quiet (`disp_due_ms`).
+    bool disp_on;        // a view is set
+    bool disp_dirty;     // the device doesn't show it right now
+    bool disp_release;   // the app let go: just resume the device's own sweeping
+    uint32_t disp_due_ms;
+    rc_display_t disp;
+    char disp_cmds[RC_DISPLAY_MAX_CMDS][40];
+    uint8_t disp_ncmds;
+    uint8_t disp_step;
 
     // Capture: screen bytes accumulate after the frame header until a frame is full
     size_t cap_fill;
@@ -186,6 +215,10 @@ void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms);
 // from "Lcd:WxH" (left unchanged when absent).
 void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint16_t *max_points, uint16_t *lcd_w,
                           uint16_t *lcd_h);
+
+// The shell commands that put `d` on a NanoVNA screen with up to `max_points` sweep points.
+// Fills `cmds` and returns how many.
+int rc_display_commands(const rc_display_t *d, uint16_t max_points, char cmds[][40], int cap);
 
 #define RC_FRAME_CAPTURE 0x03
 #define RC_FRAME_OTA 0x02

@@ -3,6 +3,8 @@ import { type AntennaType, type Band } from "@resonance/analysis";
 import { SimulatedTransport } from "../bridge/simulator";
 import { BAND_ORDER, bandsById } from "../check";
 import { formatLength, parseLength } from "../history";
+import { bandView, tuneView } from "../mirror";
+import { useDeviceView } from "../useDeviceView";
 import { calibration, client, device, go, isSimulator, link, settings } from "../state";
 import { defaultSetup, type TuneReading, TuneSession, type TuneSetup } from "../tune";
 
@@ -30,6 +32,7 @@ function Setup({ onStart }: { onStart: (s: TuneSetup) => void }) {
   const [error, setError] = useState<string | null>(null);
   const element = TYPES.find((t) => t.id === type)!.element;
   const unitWord = settings.value.units === "imperial" ? "feet" : "meters";
+  useDeviceView(bandView(band));
 
   const pickBand = (b: Band) => {
     setBand(b);
@@ -169,6 +172,7 @@ function Coach({ setup, onEdit }: { setup: TuneSetup; onEdit: () => void }) {
   };
 
   const r = session.reading;
+  useDeviceView(tuneView(setup.targetHz, r && r.bound === "exact" ? r.resonanceHz : null));
   const mhz = (hz: number) => (hz / 1e6).toFixed(3);
   const typeLabel = TYPES.find((t) => t.id === setup.type)!.label.toLowerCase();
 

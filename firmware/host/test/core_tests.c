@@ -641,6 +641,100 @@ static void test_bridge_capture(void)
     h_free(h);
 }
 
+static void test_display_commands(void)
+{
+    rc_display_t d = {.start_hz = 14000000, .stop_hz = 14350000, .markers_hz = {14175000, 14350000}, .n_markers = 2,
+                      .traces = {"swr", "smith"}, .n_traces = 2};
+    char cmds[RC_DISPLAY_MAX_CMDS][40];
+    int n = rc_display_commands(&d, 401, cmds, RC_DISPLAY_MAX_CMDS);
+    const char *want[] = {"sweep 14000000 14350000 101", "trace 0 swr 0", "trace 1 smith 0", "trace 2 off",
+                          "trace 3 off", "marker off", "marker 1 50", "marker 2 100", "resume"};
+    CHECK(n == 9);
+    for (int i = 0; i < n && i < 9; i++) CHECK(strcmp(cmds[i], want[i]) == 0);
+    // No traces asked for: the device's own traces are left alone. Fewer points on small devices.
+    d.n_traces = 0;
+    d.n_markers = 1;
+    n = rc_display_commands(&d, 51, cmds, RC_DISPLAY_MAX_CMDS);
+    CHECK(n == 4);
+    CHECK(strcmp(cmds[0], "sweep 14000000 14350000 51") == 0);
+    CHECK(strcmp(cmds[2], "marker 1 25") == 0);
+}
+
+// Index in the fake's command log of the first line starting with `prefix` at or after `from`, or -1.
+static int log_find(harness_t *h, const char *prefix, int from)
+{
+    for (int i = from; i < h->dev.nlog; i++) {
+        if (strncmp(h->dev.log[i], prefix, strlen(prefix)) == 0) return i;
+    }
+    return -1;
+}
+
+static void test_bridge_display(void)
+{
+    harness_t *h = h_new(true, 401);
+    h_attach(h);
+    cJSON *dev = h_last(h, "device");
+    const cJSON *features = cJSON_GetObjectItem(dev, "features");
+    CHECK(cJSON_IsArray(features) && strcmp(cJSON_GetArrayItem(features, 0)->valuestring, "display") == 0);
+    cJSON_Delete(dev);
+
+    h_client(h, "{\"v\":1,\"type\":\"display\",\"startHz\":14000000,\"stopHz\":14350000,"
+                "\"markersHz\":[14175000],\"traces\":[\"swr\"]}");
+    h_run(h, 300);
+    int at = log_find(h, "sweep 14000000 14350000 101", 0);
+    CHECK(at >= 0);
+    CHECK(log_find(h, "trace 0 swr 0", at) > at);
+    CHECK(log_find(h, "marker 1 50", at) > at);
+    CHECK(at >= 0 && strcmp(h->dev.log[h->dev.nlog - 1], "resume") == 0);
+
+    // A scan moves the device's sweep; the view comes back once scans go quiet.
+    int before = h->dev.nlog;
+    check_full_scan(h, 13850000, 14500000, 201);  // runs 3 s, longer than the idle wait
+    CHECK(log_find(h, "sweep 14000000", before) > log_find(h, "scan ", before));
+
+    // A scan sent while the screen is being set waits for one command, then runs.
+    h->npts = 0;
+    h_client(h, "{\"v\":1,\"type\":\"display\",\"startHz\":7000000,\"stopHz\":7300000}");
+    check_full_scan(h, 7000000, 7300000, 51);
+    CHECK(log_find(h, "sweep 7000000", before) >= 0);
+
+    // Scans back to back (a live meter) don't redraw in between.
+    before = h->dev.nlog;
+    for (int i = 0; i < 3; i++) {
+        h->npts = 0;
+        char req[128];
+        snprintf(req, sizeof req, "{\"v\":1,\"type\":\"scan\",\"id\":%d,\"startHz\":7100000,\"stopHz\":7104000,\"points\":5}", 20 + i);
+        h_client(h, req);
+        h_run(h, 200);
+    }
+    CHECK(log_find(h, "sweep", before) < 0);
+    h_run(h, 1500);
+    CHECK(log_find(h, "sweep 7000000", before) >= 0);
+
+    // Letting go: the device sweeps on its own again, and scans no longer redraw.
+    before = h->dev.nlog;
+    h_client(h, "{\"v\":1,\"type\":\"display.off\"}");
+    h_run(h, 200);
+    CHECK(h->dev.nlog == before + 1 && strcmp(h->dev.log[before], "resume") == 0);
+    h->npts = 0;
+    check_full_scan(h, 7000000, 7300000, 51);
+    CHECK(log_find(h, "sweep", before) < 0);
+
+    // Bad requests
+    int nerr = h->ntexts;
+    h_client(h, "{\"v\":1,\"type\":\"display\",\"startHz\":7300000,\"stopHz\":7000000}");
+    h_client(h, "{\"v\":1,\"type\":\"display\",\"startHz\":7000000,\"stopHz\":7300000,\"markersHz\":[14000000]}");
+    h_client(h, "{\"v\":1,\"type\":\"display\",\"startHz\":7000000,\"stopHz\":7300000,\"traces\":[\"reboot\"]}");
+    h_client(h, "{\"v\":1,\"type\":\"display\",\"startHz\":7000000,\"stopHz\":7300000,\"traces\":[]}");
+    CHECK(h->ntexts == nerr + 4);
+    cJSON *e = h_last(h, "error");
+    CHECK(e && strcmp(str(e, "code"), "bad_request") == 0);
+    cJSON_Delete(e);
+    h_run(h, 200);
+    CHECK(log_find(h, "sweep", before) < 0);
+    h_free(h);
+}
+
 static void ota_chunk(harness_t *h, uint32_t offset, const uint8_t *d, size_t n)
 {
     uint8_t f[1100] = {RC_FRAME_OTA, 0, 0, 0, (uint8_t)offset, (uint8_t)(offset >> 8), (uint8_t)(offset >> 16),
@@ -972,6 +1066,8 @@ int main(void)
     RUN(test_bridge_capture);
     RUN(test_bridge_ota);
     RUN(test_bridge_wifi_status);
+    RUN(test_display_commands);
+    RUN(test_bridge_display);
     RUN(test_version_compare);
     RUN(test_release_parse);
     RUN(test_bridge_release_update);

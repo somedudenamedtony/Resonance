@@ -6,6 +6,8 @@ import { SwrChart } from "../components/SwrChart";
 import { Readings, Verdict } from "../components/Verdict";
 import { BAND_ORDER, bandsById, CHECK_POINTS, checkOneBand, rejudge, SCAN_ALL_ORDER } from "../check";
 import { type AntennaProfile, drift, listSweeps, saveCheck } from "../history";
+import { bandView, checkView } from "../mirror";
+import { useDeviceView } from "../useDeviceView";
 import {
   calibration,
   checkProfileId,
@@ -43,6 +45,16 @@ export function Check() {
   const profile = profiles.value.find((p) => p.id === checkProfileId.value) ?? null;
   const thresholds = settings.value.thresholds;
   const modes = settings.value.modes;
+
+  useDeviceView(
+    phase.kind === "done" && last
+      ? checkView(last)
+      : phase.kind === "scanning" || phase.kind === "error"
+        ? bandView(phase.band)
+        : phase.kind === "all" && phase.current !== null
+          ? bandView(phase.rows[phase.current]!.band)
+          : null,
+  );
 
   useEffect(() => () => client.cancelScan(), []);
 

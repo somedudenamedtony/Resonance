@@ -16,6 +16,7 @@ import {
 } from "@resonance/analysis";
 import {
   type ClientMessage,
+  type DisplayView,
   decodeOtaFrame,
   detectUpdateTarget,
   encodeCaptureFrame,
@@ -121,6 +122,9 @@ export class SimulatedTransport implements Transport {
     this.configure({ antenna: { ...a, f0Hz: (a.f0Hz * lengthM) / (lengthM - deltaM) } });
   }
 
+  /** What the simulated NanoVNA's screen was last set to (`display`), for tests. */
+  displayed: DisplayView | null = null;
+
   send(msg: ClientMessage): void {
     if (!this.open) throw new Error("bridge is not connected");
     switch (msg.type) {
@@ -179,6 +183,14 @@ export class SimulatedTransport implements Transport {
         this.later(30, () => this.emit({ v: 1, type: "capture.end", bytes: img.length }));
         break;
       }
+      case "display": {
+        const { v: _v, type: _t, ...view } = msg;
+        this.displayed = view;
+        break;
+      }
+      case "display.off":
+        this.displayed = null;
+        break;
       case "wifi.set":
         this.later(20, () => this.emit({ v: 1, type: "ok", for: msg.type }));
         break;
@@ -231,6 +243,7 @@ export class SimulatedTransport implements Transport {
           firmware: "1.2.40-sim",
           maxPoints: 401,
           bridgeVersion: "0.1.0-sim",
+          features: ["display"],
         }
       : { v: PROTOCOL_VERSION, type: "device", connected: false, bridgeVersion: "0.1.0-sim" };
   }
