@@ -1,9 +1,9 @@
 import { signal } from "@preact/signals";
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { Band, SwrThresholds } from "@resonance/analysis";
+import type { Band, RlcAntenna, SwrThresholds } from "@resonance/analysis";
 import { SimulatedTransport } from "../bridge/simulator";
 import { BAND_ORDER, bandsById } from "../check";
-import { bandOf, type MeterReading, MeterSession, needleFraction, presetsFor } from "../meter";
+import { bandOf, type MeterReading, MeterSession, needleFraction, presetsFor, simTunerAntenna } from "../meter";
 import { bandView, meterView } from "../mirror";
 import { useDeviceView } from "../useDeviceView";
 import { calibration, client, device, go, link, settings } from "../state";
@@ -17,12 +17,13 @@ const lastFreqHz = signal<number | null>(null);
 
 export function Meter() {
   const [freqHz, setFreqHz] = useState<number | null>(lastFreqHz.value);
+  const simBase = useSimBase();
   const tuneTo = (hz: number) => {
     lastFreqHz.value = hz;
     setFreqHz(hz);
   };
   if (freqHz === null) return <Setup onStart={tuneTo} />;
-  return <Live key={freqHz} freqHz={freqHz} onTune={tuneTo} onEdit={() => setFreqHz(null)} />;
+  return <Live key={freqHz} freqHz={freqHz} simBase={simBase} onTune={tuneTo} onEdit={() => setFreqHz(null)} />;
 }
 
 const mhzText = (hz: number) => (hz / 1e6).toFixed(hz % 1000 === 0 ? 3 : 4);
@@ -116,7 +117,17 @@ function Presets({ band, current, onPick }: { band: Band; current?: number; onPi
   );
 }
 
-function Live({ freqHz, onTune, onEdit }: { freqHz: number; onTune: (hz: number) => void; onEdit: () => void }) {
+function Live({
+  freqHz,
+  simBase,
+  onTune,
+  onEdit,
+}: {
+  freqHz: number;
+  simBase: SimBase | null;
+  onTune: (hz: number) => void;
+  onEdit: () => void;
+}) {
   const session = useRef(new MeterSession(freqHz, () => calibration.value)).current;
   const [, bump] = useState(0);
   const [running, setRunning] = useState(true);
@@ -226,7 +237,7 @@ function Live({ freqHz, onTune, onEdit }: { freqHz: number; onTune: (hz: number)
         </>
       )}
 
-      {sim && <SimTuner sim={sim} freqHz={freqHz} />}
+      {sim && simBase && <SimTuner sim={sim} base={simBase} />}
 
       <p class="muted small num">
         {rate ? `${rate.toFixed(1)} readings a second` : " "}
@@ -339,16 +350,38 @@ const formatZ = (r: MeterReading) => {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Simulator only: one knob that walks the pretend antenna through a match at your frequency. */
-function SimTuner({ sim, freqHz }: { sim: SimulatedTransport; freqHz: number }) {
-  const [knob, setKnob] = useState(70);
+interface SimBase {
+  /** The simulated antenna as connected, including any trim. */
+  antenna: RlcAntenna;
+  /** The simulator's own antenna setting, put back when the knob goes away. */
+  saved: RlcAntenna | null;
+}
+
+/**
+ * Simulator only: the antenna the tuner knob starts from, taken once when the meter opens.
+ * Held above the per-frequency view so switching presets doesn't pick up a detuned antenna.
+ */
+function useSimBase(): SimBase | null {
+  return useRef(
+    client.transport instanceof SimulatedTransport
+      ? { antenna: client.transport.antenna, saved: client.transport.options.antenna }
+      : null,
+  ).current;
+}
+
+/**
+ * Simulator only: one knob that detunes the pretend antenna. Centered it is the antenna picked on
+ * the Connect screen, the same one a sweep measures, so the two agree.
+ */
+function SimTuner({ sim, base }: { sim: SimulatedTransport; base: SimBase }) {
+  const [knob, setKnob] = useState(0);
   useEffect(() => {
-    sim.configure({ antenna: { f0Hz: freqHz * (1 + knob / 1000), r: 50 + Math.abs(knob) / 2, q: 6 }, standard: null, coax: null });
-  }, [knob, freqHz]);
-  useEffect(() => () => sim.configure({ antenna: null }), []);
+    sim.configure({ antenna: simTunerAntenna(base.antenna, knob), standard: null, coax: null });
+  }, [knob]);
+  useEffect(() => () => sim.configure({ antenna: base.saved }), []);
   return (
     <label class="field">
-      <span>Simulator: pretend tuner knob</span>
+      <span>Simulator: pretend tuner knob (centered is the antenna as connected)</span>
       <input type="range" min="-100" max="100" value={knob} onInput={(e) => setKnob(Number((e.target as HTMLInputElement).value))} />
     </label>
   );

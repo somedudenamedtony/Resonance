@@ -3,6 +3,8 @@
 #include "bridge_task.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "ota.h"
+#include "release_update.h"
 #include "status_led.h"
 #include "usb_link.h"
 #include "web.h"
@@ -18,9 +20,11 @@ void app_main(void)
     ESP_ERROR_CHECK(err);
 
     ESP_LOGI("resonance", "Resonance bridge %s starting", RC_BRIDGE_VERSION);
+    ota_boot_check();
     bridge_task_start();
     status_led_start();
     wifi_start();
     web_start();
     usb_link_start();
+    release_update_start();
 }

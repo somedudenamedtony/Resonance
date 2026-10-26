@@ -10,6 +10,7 @@ import {
   recordsPerFrame,
 } from "../src/bridge/protocol";
 import { SimulatedTransport } from "../src/bridge/simulator";
+import { isBridgeHost } from "../src/bridge/transport";
 
 describe("binary scan frames", () => {
   it("round-trip S11 records", () => {
@@ -39,6 +40,13 @@ describe("binary scan frames", () => {
   it("rejects a truncated frame", () => {
     const buf = encodeScanFrame({ scanId: 1, offset: 0, hasS21: false, points: [{ freqHz: 1, s11re: 0, s11im: 0 }] });
     expect(() => decodeScanFrame(buf.slice(0, 20))).toThrow();
+  });
+});
+
+describe("finding the bridge", () => {
+  it("treats the bridge's own network and home Wi-Fi addresses as a bridge", () => {
+    for (const h of ["192.168.4.1", "192.168.1.42", "10.0.0.7", "172.20.1.2", "resonance.local"]) expect(isBridgeHost(h)).toBe(true);
+    for (const h of ["localhost", "127.0.0.1", "8.8.8.8", "172.32.0.1", "example.com"]) expect(isBridgeHost(h)).toBe(false);
   });
 });
 
@@ -179,4 +187,42 @@ describe("bridge client against the simulator", () => {
     expect(client.wifi).toBeNull();
     client.stop();
   });
+
+  it("checks GitHub for a release and installs it through the bridge", async () => {
+    const { client } = await connected();
+    await waitFor(() => client.release !== null);
+    expect(client.release).toEqual({ state: "idle", current: "0.1.0-sim" });
+
+    await client.checkForUpdate();
+    await waitFor(() => client.release?.state === "available");
+    expect(client.release?.latest).toBe("0.2.0-sim");
+
+    const seen: number[] = [];
+    const prev = client.onChange;
+    client.onChange = () => {
+      prev?.();
+      if (client.release?.state === "installing") seen.push(client.release.received!);
+    };
+    await client.installUpdate();
+    await waitFor(() => client.release?.state === "done");
+    expect(seen.length).toBeGreaterThan(3);
+    expect(seen).toEqual([...seen].sort((a, b) => a - b));
+    client.stop();
+  });
+
+  it("reports a bridge error for a release request", async () => {
+    const { sim, client } = await connected();
+    const done = client.checkForUpdate();
+    sim.onText?.(JSON.stringify({ v: 1, type: "error", code: "busy", message: "The bridge is already checking or installing." }));
+    await expect(done).rejects.toMatchObject({ code: "busy" });
+    client.stop();
+  });
 });
+
+async function waitFor(cond: () => boolean, ms = 5000): Promise<void> {
+  const until = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > until) throw new Error("timed out");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}

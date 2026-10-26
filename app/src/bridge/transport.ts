@@ -60,3 +60,16 @@ export class WebSocketTransport implements Transport {
     this.ws.send(buf);
   }
 }
+
+/**
+ * Whether the page came from a bridge: its own network (192.168.4.1), or home Wi-Fi, where it
+ * has whatever private address the router gave it. Anywhere else (localhost, a dev server) the
+ * app runs the simulator.
+ */
+export function isBridgeHost(host: string): boolean {
+  if (host.endsWith(".local")) return true;
+  const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(host);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}

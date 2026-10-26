@@ -15,7 +15,9 @@ export type ClientMessage =
   | ({ v: 1; type: "display" } & DisplayView)
   | { v: 1; type: "display.off" }
   | { v: 1; type: "wifi.set"; mode: "ap" | "sta"; ssid?: string; password?: string }
-  | { v: 1; type: "ota.begin"; target: "firmware" | "app"; size: number };
+  | { v: 1; type: "ota.begin"; target: "firmware" | "app"; size: number }
+  | { v: 1; type: "update.check" }
+  | { v: 1; type: "update.install" };
 
 /** NanoVNA-D trace formats the bridge accepts for `display`. All are shown for S11. */
 export type TraceFormat = "logmag" | "phase" | "smith" | "polar" | "linear" | "swr" | "real" | "imag" | "r" | "x" | "z";
@@ -60,11 +62,32 @@ export interface WifiStatus {
   reason?: string;
 }
 
+/**
+ * Installing the latest GitHub release. The bridge downloads it itself, so this needs home Wi-Fi.
+ * Older firmware never sends it.
+ */
+export interface ReleaseUpdateStatus {
+  state: "idle" | "checking" | "current" | "available" | "installing" | "done" | "failed";
+  /** The bridge's own version. */
+  current: string;
+  /** Newest release on GitHub, once checked. */
+  latest?: string;
+  /** While installing: which image, and bytes of firmware + app written so far. */
+  step?: "firmware" | "app";
+  received?: number;
+  total?: number;
+  /** Why it failed. */
+  message?: string;
+  /** A version that didn't start properly, so the bridge went back to `current`. */
+  rolledBack?: string;
+}
+
 export type ErrorCode = "no_device" | "timeout" | "busy" | "bad_request" | "internal";
 
 export type ServerMessage =
   | ({ v: 1; type: "device" } & DeviceStatus)
   | ({ v: 1; type: "wifi" } & WifiStatus)
+  | ({ v: 1; type: "update" } & ReleaseUpdateStatus)
   | { v: 1; type: "scan.begin"; id: number; points: number; ports: Ports }
   | { v: 1; type: "scan.end"; id: number; durationMs: number; cancelled?: boolean }
   | { v: 1; type: "raw.reply"; command: string; text: string }

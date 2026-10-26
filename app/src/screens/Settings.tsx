@@ -13,6 +13,7 @@ import {
   go,
   isSimulator,
   link,
+  release,
   reloadFromStore,
   settings,
   store,
@@ -389,6 +390,102 @@ function WifiSettings() {
 
 const TARGET_NAME: Record<UpdateTarget, string> = { firmware: "bridge firmware", app: "web app" };
 
+/** The latest GitHub release: the bridge checks and downloads it itself over home Wi-Fi. */
+function ReleaseUpdate() {
+  const r = release.value;
+  const w = wifi.value;
+  const [error, setError] = useState<string | null>(null);
+  const [installed, setInstalled] = useState<string | null>(null);
+
+  // Once installed, the bridge restarts with a new copy of this app: load it when it's back.
+  useEffect(() => {
+    if (r?.state === "done") setInstalled(r.latest ?? "");
+  }, [r?.state]);
+  useEffect(() => {
+    if (installed !== null && link.value === "open" && r && r.state !== "done" && !isSimulator) window.location.reload();
+  }, [installed, link.value, r?.state]);
+
+  if (installed !== null && (link.value !== "open" || r?.state === "done")) {
+    return (
+      <p class="saved" role="status">
+        Installed {installed}. The bridge is restarting; this page reloads when it's back, in about a minute.
+      </p>
+    );
+  }
+  if (!r) return null;
+
+  const online = !w || w.state === "connected"; // the simulator has no Wi-Fi to report
+  const busy = r.state === "checking" || r.state === "installing";
+  const run = async (fn: () => Promise<void>) => {
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const progress = r.state === "installing" && r.total ? (r.received ?? 0) / r.total : null;
+  const canInstall = r.latest !== undefined && r.latest !== r.current && (r.state === "available" || r.state === "failed");
+  return (
+    <>
+      <div class="rows">
+        <div class="row">
+          <span>This bridge</span>
+          <span class="value num">{r.current}</span>
+        </div>
+        <div class="row">
+          <span>Latest release</span>
+          <span class="value num">{r.latest ?? "Not checked yet"}</span>
+        </div>
+      </div>
+      {r.rolledBack && (
+        <p class="field-error" role="status">
+          Version {r.rolledBack} didn't start up properly, so the bridge went back to {r.current}.
+        </p>
+      )}
+      {!online && (
+        <p class="muted">The bridge checks GitHub for updates when it's on your home Wi-Fi. Set that up above.</p>
+      )}
+      {r.state === "checking" && <p class="muted">Checking GitHub…</p>}
+      {r.state === "current" && <p class="saved">Up to date.</p>}
+      {r.state === "available" && <p class="saved">Version {r.latest} is ready to install.</p>}
+      {r.state === "installing" && (
+        <p class="muted">
+          Downloading {r.step === "app" ? "the app" : "the firmware"}. The bridge keeps working until it restarts at
+          the end.
+        </p>
+      )}
+      {progress !== null && (
+        <div class="meter" role="progressbar" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100}>
+          <div class="meter-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+        </div>
+      )}
+      {r.state === "failed" && r.message && (
+        <p class="field-error" role="status">
+          {r.message}
+        </p>
+      )}
+      {error && (
+        <p class="field-error" role="status">
+          {error}
+        </p>
+      )}
+      {r.state !== "installing" && (
+        <div class={canInstall ? "actions" : "actions single"}>
+          {canInstall && (
+            <button class="btn primary" disabled={!online || link.value !== "open"} onClick={() => void run(() => client.installUpdate())}>
+              Install {r.latest}
+            </button>
+          )}
+          <button class="btn" disabled={!online || busy || link.value !== "open"} onClick={() => void run(() => client.checkForUpdate())}>
+            Check for updates
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
 function UpdateSettings() {
   const [file, setFile] = useState<{ name: string; bytes: Uint8Array; target: UpdateTarget } | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -429,9 +526,11 @@ function UpdateSettings() {
   return (
     <>
       <h3 class="section-title">Update the bridge</h3>
-      <p class="muted">
-        Install a new <b>resonance-bridge.bin</b> (firmware) or <b>littlefs.bin</b> (this app) from a release. If an
-        app update ever goes wrong, open <span class="num">/update</span> on the bridge to try again.
+      <ReleaseUpdate />
+      <p class={release.value ? "muted from-file" : "muted"}>
+        {release.value ? "Or install from a file: " : "Install "}a new <b>resonance-bridge.bin</b> (firmware) or{" "}
+        <b>littlefs.bin</b> (this app) from a release. If an app update ever goes wrong, open{" "}
+        <span class="num">/update</span> on the bridge to try again.
       </p>
       <div class="actions">
         <label class={`btn file-btn${busy ? " disabled" : ""}`}>

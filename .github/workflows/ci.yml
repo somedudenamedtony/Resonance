@@ -64,3 +64,51 @@ jobs:
             firmware/build/flasher_args.json
             firmware/build/flash_args
           if-no-files-found: warn
+
+  release:
+    # Bumping RC_BRIDGE_VERSION (firmware/components/resonance_core/include/rc_bridge.h) and
+    # merging to main publishes release v<version> with the images. Bridges on home Wi-Fi find
+    # it there and offer to install it.
+    name: Publish a release for a new bridge version
+    needs: [web, firmware]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Is this version released yet?
+        id: version
+        run: |
+          v=$(sed -n 's/^#define RC_BRIDGE_VERSION "\(.*\)"/\1/p' firmware/components/resonance_core/include/rc_bridge.h)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "v$v" > /dev/null 2>&1; then
+            echo "v$v is already released."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.version.outputs.new == 'true'
+        with:
+          name: resonance-bridge-esp32s3
+          path: images
+      - name: Create the release
+        if: steps.version.outputs.new == 'true'
+        run: |
+          v=${{ steps.version.outputs.version }}
+          cat > notes.md <<NOTES
+          Bridges on home Wi-Fi offer this update in **Settings → Update the bridge**.
+
+          To flash over USB instead (\`pip install esptool\`):
+
+          \`\`\`
+          esptool.py --chip esp32s3 -p <port> -b 460800 write_flash 0x0 bootloader.bin 0x8000 partition-table.bin 0xf000 ota_data_initial.bin 0x20000 resonance-bridge.bin 0x420000 littlefs.bin
+          \`\`\`
+          NOTES
+          gh release create "v$v" --target "$GITHUB_SHA" --title "Resonance v$v" --notes-file notes.md --generate-notes \
+            images/resonance-bridge.bin images/littlefs.bin images/bootloader/bootloader.bin \
+            images/partition_table/partition-table.bin images/ota_data_initial.bin

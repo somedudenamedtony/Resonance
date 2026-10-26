@@ -22,6 +22,8 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `display.off` | — | nothing |
 | `wifi.set` | `mode: "ap" \| "sta"`, `ssid?: string`, `password?: string` | `ok`, then the bridge restarts Wi-Fi |
 | `ota.begin` | `target: "firmware" \| "app"`, `size: number` | `ok`; app then sends the image as binary frames of kind `0x02`; each gets `ota.ack`; the last gets `ok` `for: "ota.end"` (or `error`) |
+| `update.check` | — | `update` (`checking`, then `current`, `available` or `failed`), or `error` `busy` |
+| `update.install` | — | `update` (`checking`, `installing` with progress, then `done` and a restart, or `failed`), or `error` |
 
 ### Bridge → app
 
@@ -35,6 +37,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `capture.begin` | `width`, `height`, `format: "rgb565be"` |
 | `capture.end` | `bytes` |
 | `ota.ack` | `received` (bytes so far) |
+| `update` | `state: "idle" \| "checking" \| "current" \| "available" \| "installing" \| "done" \| "failed"`, `current: string`, `latest?: string`, `step?: "firmware" \| "app"`, `received?: number`, `total?: number`, `message?: string`, `rolledBack?: string` |
 | `ok` | `for: string` (the request `type`) |
 | `error` | `code: "no_device" \| "timeout" \| "busy" \| "bad_request" \| "internal"`, `message`, `id?` |
 
@@ -45,6 +48,15 @@ its Wi-Fi changes (signal strength alone doesn't count). With `mode: "sta"` it i
 home Wi-Fi `ssid`: `state` says how that is going, `ip` and `rssi` are present once connected, and
 `reason` says in plain words why the last attempt failed (it keeps retrying). Older firmware
 never sends `wifi`.
+
+The bridge sends `update` after `wifi` when an app connects or says `hello`, and again whenever
+it changes (about once a second while installing). It describes the latest GitHub release, which
+the bridge fetches itself over home Wi-Fi: it checks about 20 s after joining and every 12 hours,
+and on `update.check`. `current` is the bridge's version and `latest` the newest release once
+known. While `installing`, `received` of `total` counts bytes of firmware plus app. `message` says
+why it `failed`. `rolledBack` names a version that didn't start properly, so the bootloader went
+back to `current`. `update.install` installs the latest release whatever its version (the app only
+offers it when newer). Older firmware never sends `update`.
 
 Only one scan runs at a time. A `scan` while one is in flight gets `error` `busy`.
 
@@ -121,6 +133,19 @@ image. Rules:
 - 30 s without a chunk cancels the update. Any failure leaves the running image untouched.
 - `firmware` (`resonance-bridge.bin`) goes to the inactive OTA slot; after `ok` the bridge
   reboots into it. `app` (`littlefs.bin`) rewrites the web app partition, then the bridge reboots.
+- A new firmware is on probation until it joins home Wi-Fi or an app connects. If it restarts
+  first, or 5 minutes pass, the bootloader goes back to the previous firmware.
+
+## Updates from GitHub releases
+
+Merging a change to `RC_BRIDGE_VERSION` into `main` makes CI publish release `v<version>` with
+`resonance-bridge.bin` and `littlefs.bin` attached. The bridge reads
+`api.github.com/repos/<owner>/<repo>/releases/latest` over HTTPS, compares `tag_name` with its
+version, and on `update.install` downloads both files (following GitHub's redirect to its storage
+host). Firmware goes into the spare slot first, then the app is written; only when both succeed
+does the bridge switch to the new firmware and restart. A failed firmware download changes
+nothing; a failed app download leaves the old firmware running and the app partition half
+written, so install again (the built-in `/update` page has a button for this).
 
 ## How the bridge talks to the NanoVNA
 

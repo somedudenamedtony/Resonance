@@ -23,6 +23,7 @@ import {
   type UpdateTarget,
   encodeScanFrame,
   PROTOCOL_VERSION,
+  type ReleaseUpdateStatus,
   recordsPerFrame,
   type ScanPoint,
   type ServerMessage,
@@ -80,6 +81,9 @@ export class SimulatedTransport implements Transport {
   private rand = seededRandom(7);
   private lastS11: Complex[] = [];
   private ota: { target: UpdateTarget; size: number; received: number; bytes: Uint8Array } | null = null;
+  /** The newest release on the simulated GitHub. */
+  latestRelease = "0.2.0-sim";
+  private release: { v: 1; type: "update" } & ReleaseUpdateStatus = { v: 1, type: "update", state: "idle", current: "0.1.0-sim" };
   /** The last image the simulated bridge accepted (for tests and the demo). */
   lastUpdate: { target: UpdateTarget; bytes: Uint8Array } | null = null;
 
@@ -125,8 +129,33 @@ export class SimulatedTransport implements Transport {
     if (!this.open) throw new Error("bridge is not connected");
     switch (msg.type) {
       case "hello":
-        this.later(20, () => this.emit(this.deviceMessage()));
+        this.later(20, () => {
+          this.emit(this.deviceMessage());
+          this.emit(this.release);
+        });
         break;
+      case "update.check":
+        this.setRelease({ state: "checking" });
+        this.later(300, () =>
+          this.setRelease({ state: this.latestRelease === this.release.current ? "current" : "available", latest: this.latestRelease }),
+        );
+        break;
+      case "update.install": {
+        const total = 1_200_000 + 4_000_000;
+        this.setRelease({ state: "checking" });
+        let received = 0;
+        const step = () => {
+          received = Math.min(total, received + 400_000);
+          if (received < total) {
+            this.setRelease({ state: "installing", latest: this.latestRelease, step: received < 1_200_000 ? "firmware" : "app", received, total });
+            this.later(120, step);
+          } else {
+            this.setRelease({ state: "done" });
+          }
+        };
+        this.later(200, step);
+        break;
+      }
       case "scan":
         this.scan(msg.id, msg.startHz, msg.stopHz, msg.points);
         break;
@@ -195,6 +224,13 @@ export class SimulatedTransport implements Transport {
       this.ota = null;
       this.later(5, () => this.emit({ v: 1, type: "ok", for: "ota.end" }));
     }
+  }
+
+  /** Progress and messages don't carry over from one state to the next; versions do. */
+  private setRelease(next: Omit<ReleaseUpdateStatus, "current">): void {
+    const { current, latest, rolledBack } = this.release;
+    this.release = { v: 1, type: "update", current, ...(latest && { latest }), ...(rolledBack && { rolledBack }), ...next };
+    this.emit(this.release);
   }
 
   private deviceMessage(): ServerMessage {

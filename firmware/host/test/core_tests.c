@@ -9,6 +9,7 @@
 #include "rc_bridge.h"
 #include "rc_scan.h"
 #include "rc_shell.h"
+#include "rc_update.h"
 
 static int g_failures = 0;
 static int g_checks = 0;
@@ -879,6 +880,169 @@ static void test_bridge_wifi_status(void)
     h_free(h);
 }
 
+// ---------------------------------------------------------------- release updates
+
+static void test_version_compare(void)
+{
+    CHECK(rc_version_compare("0.3.0", "0.3.0") == 0);
+    CHECK(rc_version_compare("v0.3.0", "0.3.0") == 0);
+    CHECK(rc_version_compare("0.3.0", "0.4.0") < 0);
+    CHECK(rc_version_compare("0.10.0", "0.9.9") > 0);
+    CHECK(rc_version_compare("1.2", "1.2.0") == 0);
+    CHECK(rc_version_compare("1.2.1", "1.2") > 0);
+    CHECK(rc_version_compare("0.4.0-beta", "0.4.0") < 0);
+    CHECK(rc_version_compare("0.4.0", "0.4.0-beta") > 0);
+    CHECK(rc_version_compare("0.4.0-beta", "0.3.9") > 0);
+}
+
+static void test_release_parse(void)
+{
+    // Trimmed from api.github.com/repos/<owner>/<repo>/releases/latest
+    const char *json =
+        "{\"tag_name\":\"v0.4.0\",\"name\":\"Resonance v0.4.0\",\"assets\":["
+        "{\"name\":\"bootloader.bin\",\"size\":21000,\"browser_download_url\":\"https://github.com/o/r/releases/download/v0.4.0/bootloader.bin\"},"
+        "{\"name\":\"littlefs.bin\",\"size\":12451840,\"uploader\":{\"login\":\"x\"},"
+        "\"browser_download_url\":\"https://github.com/o/r/releases/download/v0.4.0/littlefs.bin\"},"
+        "{\"name\":\"resonance-bridge.bin\",\"size\":912384,"
+        "\"browser_download_url\":\"https://github.com/o/r/releases/download/v0.4.0/resonance-bridge.bin\"}]}";
+    rc_release_t r;
+    char err[96] = "";
+    CHECK(rc_release_parse(json, strlen(json), &r, err, sizeof err));
+    CHECK(strcmp(r.version, "0.4.0") == 0);
+    CHECK(r.firmware.size == 912384 && strstr(r.firmware.url, "/resonance-bridge.bin"));
+    CHECK(r.app.size == 12451840 && strstr(r.app.url, "/littlefs.bin"));
+
+    const char *missing = "{\"tag_name\":\"v0.4.0\",\"assets\":[{\"name\":\"littlefs.bin\",\"size\":10,"
+                          "\"browser_download_url\":\"https://x/littlefs.bin\"}]}";
+    CHECK(!rc_release_parse(missing, strlen(missing), &r, err, sizeof err));
+    CHECK(strstr(err, "missing") != NULL);
+    const char *plain_http = "{\"tag_name\":\"v1\",\"assets\":["
+                             "{\"name\":\"littlefs.bin\",\"size\":10,\"browser_download_url\":\"http://x/a\"},"
+                             "{\"name\":\"resonance-bridge.bin\",\"size\":10,\"browser_download_url\":\"https://x/b\"}]}";
+    CHECK(!rc_release_parse(plain_http, strlen(plain_http), &r, err, sizeof err));
+    const char *not_found = "{\"message\":\"Not Found\"}";
+    CHECK(!rc_release_parse(not_found, strlen(not_found), &r, err, sizeof err));
+    CHECK(strstr(err, "no release") != NULL);
+    CHECK(!rc_release_parse("<html>", 6, &r, err, sizeof err));
+}
+
+static int g_checks_started, g_installs_started;
+static rc_update_status_t g_update;
+static bool g_update_busy;
+
+static bool h_update_check(void *u, char *err, size_t cap)
+{
+    if (g_update_busy) {
+        snprintf(err, cap, "Already installing.");
+        return false;
+    }
+    g_checks_started++;
+    g_update.state = RC_UPDATE_CHECKING;
+    return true;
+}
+
+static bool h_update_install(void *u, char *err, size_t cap)
+{
+    g_installs_started++;
+    g_update.state = RC_UPDATE_INSTALLING;
+    snprintf(g_update.step, sizeof g_update.step, "firmware");
+    g_update.total = 1000;
+    return true;
+}
+
+static void h_update_status(void *u, rc_update_status_t *out)
+{
+    *out = g_update;
+}
+
+static void test_bridge_release_update(void)
+{
+    // Without the hooks (host emulator, older platforms) there's no `update` message and the
+    // requests are refused in plain words.
+    harness_t *h = h_new(true, 401);
+    rc_bridge_client_connected(h->b, h->now);
+    h_run(h, 2000);
+    CHECK(count_type(h, "update") == 0);
+    h_client(h, "{\"v\":1,\"type\":\"update.check\"}");
+    cJSON *e = h_last(h, "error");
+    CHECK(e && strstr(str(e, "message"), "from a file"));
+    cJSON_Delete(e);
+    h_free(h);
+
+    memset(&g_update, 0, sizeof g_update);
+    g_checks_started = g_installs_started = 0;
+    g_update_busy = false;
+    h = h_new(true, 401);
+    rc_bridge_io_t io = h->b->io;
+    io.update_check = h_update_check;
+    io.update_install = h_update_install;
+    io.update_status = h_update_status;
+    rc_bridge_init(h->b, &io, 0);
+
+    rc_bridge_client_connected(h->b, h->now);
+    cJSON *u = h_last(h, "update");
+    CHECK(u && strcmp(str(u, "state"), "idle") == 0 && strcmp(str(u, "current"), RC_BRIDGE_VERSION) == 0);
+    CHECK(u && !cJSON_GetObjectItem(u, "latest") && !cJSON_GetObjectItem(u, "received"));
+    cJSON_Delete(u);
+
+    // Check: the reply is the new state straight away, then whatever the platform finds.
+    h_client(h, "{\"v\":1,\"type\":\"update.check\"}");
+    CHECK(g_checks_started == 1);
+    u = h_last(h, "update");
+    CHECK(u && strcmp(str(u, "state"), "checking") == 0);
+    cJSON_Delete(u);
+    g_update.state = RC_UPDATE_AVAILABLE;
+    snprintf(g_update.latest, sizeof g_update.latest, "9.0.0");
+    h_run(h, 1100);
+    u = h_last(h, "update");
+    CHECK(u && strcmp(str(u, "state"), "available") == 0 && strcmp(str(u, "latest"), "9.0.0") == 0);
+    cJSON_Delete(u);
+
+    // Nothing changed: nothing re-sent.
+    int before = count_type(h, "update");
+    h_run(h, 3000);
+    CHECK(count_type(h, "update") == before);
+
+    // Install reports progress as it moves.
+    h_client(h, "{\"v\":1,\"type\":\"update.install\"}");
+    CHECK(g_installs_started == 1);
+    g_update.received = 400;
+    h_run(h, 1100);
+    u = h_last(h, "update");
+    CHECK(u && strcmp(str(u, "state"), "installing") == 0 && strcmp(str(u, "step"), "firmware") == 0);
+    CHECK(u && num(u, "received") == 400 && num(u, "total") == 1000);
+    cJSON_Delete(u);
+
+    // A failure carries its reason; a rolled-back version is reported.
+    g_update.state = RC_UPDATE_FAILED;
+    snprintf(g_update.message, sizeof g_update.message, "Couldn't reach GitHub.");
+    snprintf(g_update.rolled_back, sizeof g_update.rolled_back, "8.9.0");
+    h_run(h, 1100);
+    u = h_last(h, "update");
+    CHECK(u && strcmp(str(u, "message"), "Couldn't reach GitHub.") == 0);
+    CHECK(u && strcmp(str(u, "rolledBack"), "8.9.0") == 0 && !cJSON_GetObjectItem(u, "received"));
+    cJSON_Delete(u);
+
+    // The platform refusing (busy) becomes an error; a file upload blocks an install.
+    g_update_busy = true;
+    h_client(h, "{\"v\":1,\"type\":\"update.check\"}");
+    e = h_last(h, "error");
+    CHECK(e && strcmp(str(e, "code"), "busy") == 0 && strcmp(str(e, "message"), "Already installing.") == 0);
+    cJSON_Delete(e);
+    h_client(h, "{\"v\":1,\"type\":\"ota.begin\",\"target\":\"firmware\",\"size\":100}");
+    h_client(h, "{\"v\":1,\"type\":\"update.install\"}");
+    CHECK(g_installs_started == 1);
+    e = h_last(h, "error");
+    CHECK(e && strstr(str(e, "message"), "from a file"));
+    cJSON_Delete(e);
+
+    // hello always gets a fresh update status.
+    before = count_type(h, "update");
+    h_client(h, "{\"v\":1,\"type\":\"hello\",\"appVersion\":\"t\"}");
+    CHECK(count_type(h, "update") == before + 1);
+    h_free(h);
+}
+
 int main(void)
 {
     RUN(test_shell_text_response);
@@ -904,6 +1068,9 @@ int main(void)
     RUN(test_bridge_wifi_status);
     RUN(test_display_commands);
     RUN(test_bridge_display);
+    RUN(test_version_compare);
+    RUN(test_release_parse);
+    RUN(test_bridge_release_update);
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

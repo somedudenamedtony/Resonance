@@ -68,7 +68,7 @@ The ESP32-S3 is a thin, reliable relay: it owns the USB link and Wi-Fi, serves t
 | HTTP server | Serve the web app's static files from LittleFS, gzip-compressed, with a service worker for instant reloads. |
 | WebSocket | One endpoint, `/ws`. JSON control messages, binary frames for sweep data. Up to 2 clients; the newest client takes control. |
 | Storage | LittleFS partition (~10 MB) holds the app bundle. NVS holds Wi-Fi settings. Calibration and history live on the phone (see Data model). |
-| Updates | OTA upload of firmware and app bundle from the Settings screen. |
+| Updates | In bridge mode the bridge checks GitHub releases and installs firmware and app together from the Settings screen; a file upload works offline. New firmware rolls back if it never gets back on Wi-Fi. |
 | Status | Onboard RGB LED: blue blinking = no NanoVNA, green = ready, amber pulse = sweeping, red = error. |
 
 **Power.** 5 V from the UART port or the 5V pin. The USB host port may need the IN-OUT pad bridged to supply VBUS to the NanoVNA (see Open questions).
@@ -105,6 +105,7 @@ Max points per scan varies by model (101 on original, 401+ on H4/DiSlord builds)
 | `raw` | `command` | `raw.reply` text (Advanced console) |
 | `wifi.set` | `mode`, `ssid`, `password` | Saves and reboots Wi-Fi |
 | `ota.begin` | `target` (`firmware` or `app`), `size` | Ready for binary upload |
+| `update.check` / `update.install` | — | `update` status: latest GitHub release, install progress |
 
 **Bridge to app.**
 

@@ -3,6 +3,7 @@ set(RC_SRCS
     src/rc_shell.c
     src/rc_scan.c
     src/rc_bridge.c
+    src/rc_update.c
     third_party/cjson/cJSON.c)
 
 if(ESP_PLATFORM)

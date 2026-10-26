@@ -11,6 +11,7 @@ import {
   type DisplayView,
   parseServerMessage,
   PROTOCOL_VERSION,
+  type ReleaseUpdateStatus,
   type ServerMessage,
   type WifiStatus,
 } from "./protocol";
@@ -70,6 +71,8 @@ export class BridgeClient {
   device: DeviceStatus | null = null;
   /** Sent by bridge firmware that reports Wi-Fi; stays null with older firmware. */
   wifi: WifiStatus | null = null;
+  /** Sent by bridge firmware that can update itself from GitHub; null otherwise. */
+  release: ReleaseUpdateStatus | null = null;
   onChange?: () => void;
 
   private nextId = 1;
@@ -109,6 +112,7 @@ export class BridgeClient {
       this.device = null;
       this.wifi = null;
       this.displaySent = undefined;
+      this.release = null;
       this.failPending(new BridgeError("disconnected", "Lost the connection to the bridge."));
       this.failUpdate(new BridgeError("disconnected", "Lost the connection during the update."));
       this.changed();
@@ -234,6 +238,33 @@ export class BridgeClient {
     u.reject(err);
   }
 
+  /** Ask the bridge to look for a newer release on GitHub. Resolves once it has started. */
+  checkForUpdate(): Promise<void> {
+    return this.releaseRequest("update.check");
+  }
+
+  /**
+   * Ask the bridge to download and install the latest release (firmware, then app). Progress
+   * arrives in `release`; when it's done the bridge restarts.
+   */
+  installUpdate(): Promise<void> {
+    if (this.updating) return Promise.reject(new BridgeError("busy", "An update from a file is running."));
+    return this.releaseRequest("update.install");
+  }
+
+  private releaseRequest(type: "update.check" | "update.install"): Promise<void> {
+    if (this.link !== "open") return Promise.reject(new BridgeError("disconnected", "The bridge isn't connected."));
+    return new Promise((resolve, reject) => {
+      try {
+        this.transport.send({ v: PROTOCOL_VERSION, type });
+        // The bridge answers with a fresh `update` message, or an error.
+        this.okWaiters.push({ for: "update", resolve, reject });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
   /** Ask the bridge to join home Wi-Fi (sta) or stay hotspot-only (ap). It restarts after "ok". */
   setWifi(mode: "ap" | "sta", ssid?: string, password?: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -304,6 +335,14 @@ export class BridgeClient {
       case "wifi": {
         const { v: _v, type: _t, ...status } = msg;
         this.wifi = status;
+        this.changed();
+        break;
+      }
+      case "update": {
+        const { v: _v, type: _t, ...status } = msg;
+        this.release = status;
+        const i = this.okWaiters.findIndex((w) => w.for === "update");
+        if (i >= 0) this.okWaiters.splice(i, 1)[0]!.resolve();
         this.changed();
         break;
       }
