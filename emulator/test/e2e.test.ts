@@ -104,7 +104,11 @@ describe("app ↔ C bridge ↔ emulated NanoVNA", () => {
     // A scan moves the device's sweep; the bridge puts the view back once scans go quiet.
     await client.scan({ ...range, points: 201 });
     const afterScan = nano.history.length;
-    await waitFor(() => nano.history.lastIndexOf(sweepCmd) >= afterScan, "view restored", 3000);
+    await waitFor(
+      () => nano.history.lastIndexOf(sweepCmd) >= afterScan && nano.history.at(-1) === "resume",
+      "view restored",
+      3000,
+    );
 
     // Letting go just resumes the device's own sweeping.
     const beforeOff = nano.history.length;
