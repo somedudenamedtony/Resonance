@@ -12,8 +12,26 @@ export type ClientMessage =
   | { v: 1; type: "cancel"; id: number }
   | { v: 1; type: "raw"; command: string }
   | { v: 1; type: "capture" }
+  | ({ v: 1; type: "display" } & DisplayView)
+  | { v: 1; type: "display.off" }
   | { v: 1; type: "wifi.set"; mode: "ap" | "sta"; ssid?: string; password?: string }
   | { v: 1; type: "ota.begin"; target: "firmware" | "app"; size: number };
+
+/** NanoVNA-D trace formats the bridge accepts for `display`. All are shown for S11. */
+export type TraceFormat = "logmag" | "phase" | "smith" | "polar" | "linear" | "swr" | "real" | "imag" | "r" | "x" | "z";
+
+/**
+ * What to put on the NanoVNA's own screen: its sweep range, up to 4 markers (inside the range)
+ * and optionally 1–4 traces. Leaving `traces` out keeps the device's own traces.
+ */
+export interface DisplayView {
+  startHz: number;
+  stopHz: number;
+  markersHz?: number[];
+  traces?: TraceFormat[];
+}
+
+export const DISPLAY_MAX_MARKERS = 4;
 
 // ---- Bridge → app ----
 export interface DeviceStatus {
@@ -22,6 +40,8 @@ export interface DeviceStatus {
   firmware?: string;
   maxPoints?: number;
   bridgeVersion: string;
+  /** Optional bridge features, e.g. "display". Older bridges leave it out. */
+  features?: string[];
 }
 
 /** The bridge's Wi-Fi. `mode: "sta"` means it also joins home Wi-Fi (`ssid`). */

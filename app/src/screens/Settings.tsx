@@ -144,6 +144,22 @@ export function Settings() {
       <ModePicker />
       <p class="muted small">Checks judge this part of each band. Pick Whole band to judge everything.</p>
 
+      <h3 class="section-title">NanoVNA screen</h3>
+      <Segmented<"on" | "off">
+        label="NanoVNA screen"
+        value={s.mirrorScreen ? "on" : "off"}
+        options={[
+          ["on", "Follow the app"],
+          ["off", "Leave it alone"],
+        ]}
+        onChange={(v) => void save({ ...s, mirrorScreen: v === "on" })}
+      />
+      <p class="muted small">
+        {d?.connected && !client.canDisplay
+          ? "Update the bridge to use this: its firmware can't set the NanoVNA's screen yet."
+          : "Follow the app sets the NanoVNA to the band you're looking at, with SWR and Smith traces and markers on the best SWR and resonance. It catches up a moment after each scan."}
+      </p>
+
       <h3 class="section-title">Calibration</h3>
       <div class="rows">
         <div class="row">

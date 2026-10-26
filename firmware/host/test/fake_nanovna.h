@@ -17,6 +17,8 @@ typedef struct {
     size_t line_len;
     int scans;            // number of scan commands executed
     char last_cmd[128];
+    char log[64][128];    // every command line received, oldest first
+    int nlog;
 } fake_nanovna_t;
 
 void fake_init(fake_nanovna_t *f, bool binary, uint16_t max_points);

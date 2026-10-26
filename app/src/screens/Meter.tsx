@@ -4,6 +4,8 @@ import type { Band, SwrThresholds } from "@resonance/analysis";
 import { SimulatedTransport } from "../bridge/simulator";
 import { BAND_ORDER, bandsById } from "../check";
 import { bandOf, type MeterReading, MeterSession, needleFraction, presetsFor } from "../meter";
+import { bandView, meterView } from "../mirror";
+import { useDeviceView } from "../useDeviceView";
 import { calibration, client, device, go, link, settings } from "../state";
 import { LearnLink } from "./Learn";
 
@@ -30,6 +32,7 @@ function Setup({ onStart }: { onStart: (hz: number) => void }) {
   const [band, setBand] = useState<Band>((lastFreqHz.value && bandOf(bands, lastFreqHz.value)) || bands[0]!);
   const [mhz, setMhz] = useState(lastFreqHz.value ? mhzText(lastFreqHz.value) : "");
   const [error, setError] = useState<string | null>(null);
+  useDeviceView(bandView(band));
   const start = () => {
     const v = Number(mhz.replace(",", "."));
     if (mhz.trim() === "" || !Number.isFinite(v) || v < 0.1 || v > 1500) {
@@ -122,6 +125,8 @@ function Live({ freqHz, onTune, onEdit }: { freqHz: number; onTune: (hz: number)
   const sim = client.transport instanceof SimulatedTransport ? client.transport : null;
   const thresholds = settings.value.thresholds;
   const band = bandOf(bandsById(BAND_ORDER), freqHz);
+  // The device redraws once readings pause; between back-to-back scans it holds still.
+  useDeviceView(meterView(freqHz, band));
 
   useEffect(() => {
     if (!running) return;

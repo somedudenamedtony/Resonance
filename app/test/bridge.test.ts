@@ -123,6 +123,48 @@ describe("bridge client against the simulator", () => {
     client.stop();
   });
 
+  it("sets the NanoVNA's screen, drops repeats and resends after a reconnect", async () => {
+    const { sim, client } = await connected();
+    const sent: string[] = [];
+    const send = sim.send.bind(sim);
+    sim.send = (m) => {
+      sent.push(m.type);
+      send(m);
+    };
+    expect(client.canDisplay).toBe(true);
+    const view = { startHz: 13_850_000, stopHz: 14_500_000, markersHz: [14_175_000], traces: ["swr" as const] };
+    client.display(view);
+    client.display({ ...view });
+    expect(sent).toEqual(["display"]);
+    expect(sim.displayed).toEqual(view);
+    client.display(null);
+    client.display(null);
+    expect(sent).toEqual(["display", "display.off"]);
+    expect(sim.displayed).toBeNull();
+    client.display(view);
+    // The link drops and comes back: the view the app wants is sent again.
+    sim.onClose?.();
+    sim.onOpen?.();
+    sim.onText?.(JSON.stringify({ v: 1, type: "device", connected: true, bridgeVersion: "0.4.0", features: ["display"] }));
+    expect(sent.filter((t) => t === "display")).toHaveLength(3);
+    client.stop();
+  });
+
+  it("leaves the NanoVNA's screen alone on bridges without the feature", async () => {
+    const { sim, client } = await connected();
+    sim.onText?.(JSON.stringify({ v: 1, type: "device", connected: true, bridgeVersion: "0.3.0" }));
+    const sent: string[] = [];
+    const send = sim.send.bind(sim);
+    sim.send = (m) => {
+      sent.push(m.type);
+      send(m);
+    };
+    client.display({ startHz: 7e6, stopHz: 7.3e6 });
+    expect(client.canDisplay).toBe(false);
+    expect(sent).toEqual([]);
+    client.stop();
+  });
+
   it("tracks the bridge's Wi-Fi status and forgets it on disconnect", async () => {
     const { sim, client } = await connected();
     expect(client.wifi).toBeNull();

@@ -18,6 +18,8 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `cancel` | `id: u16` | `scan.end` with `cancelled: true` |
 | `raw` | `command: string` | `raw.reply` |
 | `capture` | — | `capture.begin`, binary frames of kind `0x03`, `capture.end` |
+| `display` | `startHz`, `stopHz`, `markersHz?: number[]` (≤ 4, inside the range), `traces?: string[]` (1–4 of `logmag phase smith polar linear swr real imag r x z`) | nothing (`error` `bad_request` if invalid) |
+| `display.off` | — | nothing |
 | `wifi.set` | `mode: "ap" \| "sta"`, `ssid?: string`, `password?: string` | `ok`, then the bridge restarts Wi-Fi |
 | `ota.begin` | `target: "firmware" \| "app"`, `size: number` | `ok`; app then sends the image as binary frames of kind `0x02`; each gets `ota.ack`; the last gets `ok` `for: "ota.end"` (or `error`) |
 
@@ -25,7 +27,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 
 | `type` | Fields |
 | --- | --- |
-| `device` | `connected: boolean`, `model?: string`, `firmware?: string`, `maxPoints?: number`, `bridgeVersion: string` |
+| `device` | `connected: boolean`, `model?: string`, `firmware?: string`, `maxPoints?: number`, `bridgeVersion: string`, `features?: string[]` |
 | `wifi` | `mode: "ap" \| "sta"`, `apSsid: string`, `ssid?: string`, `state?: "connecting" \| "connected" \| "failed"`, `ip?: string`, `rssi?: number` (dBm), `reason?: string` |
 | `scan.begin` | `id`, `points`, `ports` |
 | `scan.end` | `id`, `durationMs`, `cancelled?: boolean` |
@@ -45,6 +47,30 @@ home Wi-Fi `ssid`: `state` says how that is going, `ip` and `rssi` are present o
 never sends `wifi`.
 
 Only one scan runs at a time. A `scan` while one is in flight gets `error` `busy`.
+
+`features` lists optional abilities; bridge 0.4.0 sends `["display"]`. Older bridges leave it out,
+and the app doesn't send `display` to them.
+
+### The NanoVNA's own screen (`display`)
+
+`display` asks the bridge to keep the NanoVNA's screen on the app's view. The bridge stores the
+latest view and sends, when the device is idle:
+
+```
+sweep <startHz> <stopHz> <points>      points = min(101, device max)
+trace <n> <format> 0                   one per requested trace, then "trace <n> off" up to 3 (skipped without traces)
+marker off
+marker <k> <index>                     each marker, as the nearest sweep point index
+resume                                 so the device keeps sweeping live
+```
+
+Scans change the device's sweep and leave it paused, so after a scan the bridge sends the view
+again once no scan has run for 800 ms (back-to-back scans, like the SWR meter, don't redraw in
+between). A `scan` that arrives while the view is being sent waits for the current command only.
+A newer `display` replaces the old one. `display.off` stops this and sends `resume` once. The view
+survives app reconnects and is sent again when the NanoVNA reattaches. Replies to these commands
+are ignored, so firmware without one of them simply skips it. The device draws its traces with its
+own calibration, not the app's.
 
 ## Binary frames
 

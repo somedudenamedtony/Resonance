@@ -1,6 +1,8 @@
 import { useState } from "preact/hooks";
 import { abs, arg, impedance, returnLoss, swr, type Sweep, toCsv, toTouchstone } from "@resonance/analysis";
-import { go, lastCheck } from "../state";
+import { checkView } from "../mirror";
+import { useDeviceView } from "../useDeviceView";
+import { go, lastCheck, type LastCheck } from "../state";
 import { LearnLink } from "./Learn";
 
 export function Advanced() {
@@ -15,7 +17,7 @@ export function Advanced() {
       </div>
     );
   }
-  return <AdvancedView sweep={last.sweep} title={`${last.result.band.name}, ${new Date(last.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`} band={last.result.band} />;
+  return <AdvancedView check={last} sweep={last.sweep} title={`${last.result.band.name}, ${new Date(last.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`} band={last.result.band} />;
 }
 
 function download(name: string, text: string, type: string) {
@@ -26,12 +28,23 @@ function download(name: string, text: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-function AdvancedView({ sweep, title, band }: { sweep: Sweep; title: string; band: { startHz: number; stopHz: number; name: string } }) {
+function AdvancedView({
+  check,
+  sweep,
+  title,
+  band,
+}: {
+  check: LastCheck;
+  sweep: Sweep;
+  title: string;
+  band: { startHz: number; stopHz: number; name: string };
+}) {
   const n = sweep.freqHz.length;
   const minIdx = sweep.s11.reduce((best, g, i) => (abs(g) < abs(sweep.s11[best]!) ? i : best), 0);
   const [k, setK] = useState(minIdx);
   const z = sweep.s11.map((g) => impedance(g));
   const f = sweep.freqHz[k]!;
+  useDeviceView(checkView(check, f)); // marker 1 follows the slider
   const g = sweep.s11[k]!;
   const zk = z[k]!;
   const w = 2 * Math.PI * f;

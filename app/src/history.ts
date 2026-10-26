@@ -64,6 +64,8 @@ export interface Settings {
   modes: OperatingMode[];
   /** The first-run walkthrough has been shown (finished or skipped). */
   introSeen: boolean;
+  /** Set the NanoVNA's own screen to match what the app shows. */
+  mirrorScreen: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -72,6 +74,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "auto",
   modes: [],
   introSeen: false,
+  mirrorScreen: true,
 };
 
 // ---------- conversions ----------

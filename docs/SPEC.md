@@ -89,6 +89,7 @@ The app talks JSON over one WebSocket; the bridge translates to NanoVNA shell co
 | `sweep` + `data 0` / `data 1` | Fallback sweep path | For older firmware without `scan` |
 | `pause`, `resume` | Stop the device's own sweeping | `scan` pauses sweeping itself on NanoVNA-D |
 | `capture` | Device screenshot | Advanced view only |
+| `sweep <start> <stop> <points>`, `trace`, `marker`, `resume` | Put the app's view on the device's own screen | `display` message; the app's jobs set band, SWR/Smith traces and markers |
 
 Max points per scan varies by model (101 on original, 401+ on H4/DiSlord builds). The bridge splits larger requests into segments and stitches them.
 
