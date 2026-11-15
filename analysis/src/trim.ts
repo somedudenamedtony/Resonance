@@ -1,4 +1,4 @@
-export type AntennaType = "dipole" | "efhw" | "vertical" | "mobile" | "other";
+export type AntennaType = "dipole" | "efhw" | "vertical" | "mobile" | "buddistick" | "other";
 
 export interface TrimInput {
   readonly type: AntennaType;
@@ -39,6 +39,7 @@ export function estimateElementLengthM(type: AntennaType, resonanceHz: number): 
     case "dipole":
     case "vertical":
     case "mobile":
+    case "buddistick":
     case "other":
       return 71.3 / fMHz;
   }

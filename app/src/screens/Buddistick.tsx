@@ -24,9 +24,9 @@ import { TuneScale } from "./Tune";
 const LIVE_INTERVAL_MS = 2000;
 const mhz = (hz: number) => (hz / 1e6).toFixed(3);
 
-export function Buddistick() {
+export function Buddistick({ bandId, targetHz }: { bandId?: string; targetHz?: number }) {
   const [setup, setSetup] = useState<BuddiSetup | null>(null);
-  return setup ? <Coach setup={setup} onEdit={() => setSetup(null)} /> : <Setup onStart={setSetup} />;
+  return setup ? <Coach setup={setup} onEdit={() => setSetup(null)} /> : <Setup onStart={setSetup} bandId={bandId} targetHz={targetHz} />;
 }
 
 function useSaved(bandId: string): [SavedBuddiSettings | null, (s: SavedBuddiSettings) => Promise<void>] {
@@ -46,11 +46,16 @@ function useSaved(bandId: string): [SavedBuddiSettings | null, (s: SavedBuddiSet
   return [saved, save];
 }
 
-function Setup({ onStart }: { onStart: (s: BuddiSetup) => void }) {
+function Setup({ onStart, bandId, targetHz: fromHz }: { onStart: (s: BuddiSetup) => void; bandId?: string; targetHz?: number }) {
   const bands = bandsById([...BUDDI_BANDS]);
-  const [band, setBand] = useState<Band>(bands.find((b) => b.id === "20m")!);
-  const presets = presetsFor(band);
-  const [targetHz, setTargetHz] = useState(presets[0]!.freqHz);
+  // Coming from Tune or a saved antenna: start on its band (or the band its frequency is in).
+  const initial =
+    bands.find((b) => b.id === bandId) ?? (fromHz ? bands.find((b) => fromHz >= b.startHz && fromHz <= b.stopHz) : undefined) ?? bands.find((b) => b.id === "20m")!;
+  const [band, setBand] = useState<Band>(initial);
+  const bandPresets = presetsFor(band);
+  const custom = fromHz && fromHz >= band.startHz && fromHz <= band.stopHz && !bandPresets.some((p) => p.freqHz === fromHz);
+  const presets = custom ? [{ label: "Yours", freqHz: fromHz }, ...bandPresets] : bandPresets;
+  const [targetHz, setTargetHz] = useState(fromHz && fromHz >= initial.startHz && fromHz <= initial.stopHz ? fromHz : presets[0]!.freqHz);
   const [saved] = useSaved(band.id);
   const start = BAND_STARTS[band.id as keyof typeof BAND_STARTS];
   const units = settings.value.units;

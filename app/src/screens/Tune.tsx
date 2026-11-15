@@ -14,6 +14,7 @@ const TYPES: { id: AntennaType; label: string; element: string }[] = [
   { id: "efhw", label: "End-fed", element: "the wire" },
   { id: "vertical", label: "Vertical", element: "the radiator" },
   { id: "mobile", label: "Mobile", element: "the whip" },
+  { id: "buddistick", label: "Buddistick", element: "the whip" },
   { id: "other", label: "Other", element: "the element" },
 ];
 
@@ -55,6 +56,10 @@ function Setup({ onStart, targetHz }: { onStart: (s: TuneSetup) => void; targetH
 
   const start = () => {
     const mhz = Number(target);
+    if (type === "buddistick") {
+      go({ name: "buddistick", bandId: band?.id, targetHz: Number.isFinite(mhz) ? Math.round(mhz * 1e6) : undefined });
+      return;
+    }
     if (!band) {
       if (!typedHz || typedHz < MIN_SCAN_HZ || typedHz > maxHz) {
         setError(`Enter the frequency it's for in MHz, between ${formatHz(MIN_SCAN_HZ)} and ${formatHz(maxHz)}.`);
@@ -107,18 +112,22 @@ function Setup({ onStart, targetHz }: { onStart: (s: TuneSetup) => void; targetH
         <span>{band ? "Target frequency, MHz" : "Frequency it's for, MHz"}</span>
         <input type="text" inputMode="decimal" value={target} onInput={(e) => (setTarget((e.target as HTMLInputElement).value), setError(null))} />
       </label>
-      <label class="field">
-        <span>
-          Length of {element} now, {unitWord} (optional)
-        </span>
-        <input
-          type="text"
-          inputMode="decimal"
-          placeholder="Leave blank to estimate"
-          value={length}
-          onInput={(e) => (setLength((e.target as HTMLInputElement).value), setError(null))}
-        />
-      </label>
+      {type === "buddistick" ? (
+        <p class="muted small">The Buddistick coach walks you through the coil tap, whip and radial.</p>
+      ) : (
+        <label class="field">
+          <span>
+            Length of {element} now, {unitWord} (optional)
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="Leave blank to estimate"
+            value={length}
+            onInput={(e) => (setLength((e.target as HTMLInputElement).value), setError(null))}
+          />
+        </label>
+      )}
       {error && (
         <p class="field-error" role="alert">
           {error}
@@ -127,7 +136,7 @@ function Setup({ onStart, targetHz }: { onStart: (s: TuneSetup) => void; targetH
 
       <div class="actions single">
         <button class="btn primary big" onClick={start}>
-          Start tuning
+          {type === "buddistick" ? "Open the Buddistick coach" : "Start tuning"}
         </button>
       </div>
     </>
