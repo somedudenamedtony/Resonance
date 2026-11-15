@@ -6,7 +6,7 @@ const STEPS: { icon: IconName; title: string; text: string }[] = [
   {
     icon: "antenna",
     title: "Connect",
-    text: "Plug the NanoVNA into the bridge and join the bridge's Wi-Fi. The strip at the top of every screen shows whether the NanoVNA is ready; tap it for details.",
+    text: "Plug the NanoVNA into the bridge and join the bridge's Wi-Fi (the password is Resonance). The strip at the top of every screen shows whether the NanoVNA is ready; tap it for details.",
   },
   {
     icon: "calibrate",

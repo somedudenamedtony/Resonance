@@ -208,7 +208,7 @@ describe("bridge client against the simulator", () => {
     // 0.5.0 and later: a list, wifi.add and wifi.forget.
     sent.length = 0;
     sim.onText?.(
-      JSON.stringify({ v: 1, type: "wifi", mode: "sta", apSsid: "Resonance-AB12", apPassword: "k3mnpq7x", networks: ["HomeNet"], state: "connecting" }),
+      JSON.stringify({ v: 1, type: "wifi", mode: "sta", apSsid: "Resonance-AB12", apPassword: "Resonance", networks: ["HomeNet"], state: "connecting" }),
     );
     expect(client.canSaveNetworks).toBe(true);
     expect(client.wifi?.networks).toEqual(["HomeNet"]);

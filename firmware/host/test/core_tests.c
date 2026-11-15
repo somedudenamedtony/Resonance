@@ -938,12 +938,12 @@ static void test_bridge_wifi_networks(void)
     io.wifi_forget = h_wifi_forget;
     rc_bridge_init(h->b, &io, 0);
     snprintf(h->wifi.ap_ssid, sizeof h->wifi.ap_ssid, "Resonance-AB12");
-    snprintf(h->wifi.ap_pass, sizeof h->wifi.ap_pass, "k3mnpq7x");
+    snprintf(h->wifi.ap_pass, sizeof h->wifi.ap_pass, "Resonance");
     rc_bridge_client_connected(h->b, h->now);
 
     // Hotspot only: the hotspot password and an empty list are reported.
     cJSON *w = h_last(h, "wifi");
-    CHECK(w && strcmp(str(w, "mode"), "ap") == 0 && strcmp(str(w, "apPassword"), "k3mnpq7x") == 0);
+    CHECK(w && strcmp(str(w, "mode"), "ap") == 0 && strcmp(str(w, "apPassword"), "Resonance") == 0);
     CHECK(w && json_array_size(w, "networks") == 0);
     cJSON_Delete(w);
 

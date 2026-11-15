@@ -70,11 +70,13 @@ firmware and the app says so. Rollback is a bootloader feature, so a board first
 an older build needs **one USB flash** (bootloader included) to get it. Partition table
 changes can never go over the air.
 
-The serial log prints the Wi-Fi name and password on boot:
+The bridge's own hotspot is called `Resonance-XXXX` (the last four characters come from the
+board) and its password is always **Resonance**. Since 0.5.2 this is fixed; older bridges made
+a random one, and they switch to Resonance once updated. The serial log prints both on boot:
 
 ```
  Wi-Fi network: Resonance-3F2A
- Password:      k7wmq2rx
+ Password:      Resonance
  Then open:     http://192.168.4.1/
 ```
 
@@ -91,7 +93,7 @@ answers to http://resonance.local/ on every network.
 
 ## First flash checklist (M1 exit: `version` over Wi-Fi)
 
-1. Flash, open the monitor, note the Wi-Fi password.
+1. Flash and open the monitor. The Wi-Fi password is `Resonance`.
 2. Plug in the NanoVNA. Expect `NanoVNA connected`, the device descriptor dump, then
    `NanoVNA ready: <model>, firmware <x>, <n> points, binary scans`.
    - Nothing at all: power. Bridge IN-OUT, or power the NanoVNA from its own battery.
