@@ -97,6 +97,16 @@ describe("bridge client against the simulator", () => {
     client.stop();
   });
 
+  it("reports the NanoVNA battery and drops it when the NanoVNA goes", async () => {
+    const { sim, client } = await connected();
+    expect(client.battery).toEqual({ nanovna: { mV: 3910 } });
+    sim.configure({ deviceConnected: false });
+    expect(client.battery).toBeNull();
+    sim.configure({ deviceConnected: true, batteryMv: 3650 });
+    expect(client.battery?.nanovna?.mV).toBe(3650);
+    client.stop();
+  });
+
   it("reads the device screen", async () => {
     const { client } = await connected();
     const cap = await client.capture();

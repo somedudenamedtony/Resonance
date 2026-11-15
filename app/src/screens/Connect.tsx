@@ -1,10 +1,13 @@
 import { useRef, useState } from "preact/hooks";
 import { rgb565beToRgba } from "../bridge/protocol";
 import { SIM_ANTENNAS, SimulatedTransport } from "../bridge/simulator";
-import { client, device, go, link } from "../state";
+import { batteryDetail } from "../battery";
+import { BatteryGauge } from "../components/BatteryGauge";
+import { battery, client, device, go, link } from "../state";
 
 export function Connect() {
   const d = device.value;
+  const mV = d?.connected ? battery.value?.nanovna?.mV : undefined;
   const l = link.value;
   const sim = client.transport instanceof SimulatedTransport ? client.transport : null;
   const [antennaId, setAntennaId] = useState(sim?.options.antennaId ?? "");
@@ -42,7 +45,21 @@ export function Connect() {
             <span class="value num">{d.firmware ?? "Unknown"}</span>
           </div>
         )}
+        {mV ? (
+          <div class="row">
+            <span>NanoVNA battery</span>
+            <span class="value num battery-value">
+              <BatteryGauge mV={mV} />
+              {batteryDetail(mV)}
+            </span>
+          </div>
+        ) : null}
       </div>
+      {mV ? (
+        <p class="muted" style={{ marginTop: "8px" }}>
+          The NanoVNA charges from the bridge while it's plugged in, so the battery reads a little high until you unplug it.
+        </p>
+      ) : null}
 
       {l !== "open" && !sim && (
         <p class="muted" style={{ marginTop: "12px" }}>

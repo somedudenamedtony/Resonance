@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#define RC_BRIDGE_VERSION "0.5.0"
+#define RC_BRIDGE_VERSION "0.5.3"
 #define RC_SHELL_BUF_SIZE 32768
 #define RC_MAX_SCAN_POINTS 10001
 #define RC_MAX_SEGMENT_POINTS 401
@@ -112,6 +112,7 @@ typedef enum {
     RC_JOB_RAW,
     RC_JOB_CAPTURE,
     RC_JOB_DISPLAY,
+    RC_JOB_BATTERY,
 } rc_job_t;
 
 typedef struct {
@@ -198,6 +199,12 @@ typedef struct rc_bridge {
     uint32_t ota_received;
     uint32_t ota_last_ms;
 
+    // NanoVNA battery (`vbat`), read between jobs every RC_BATTERY_POLL_MS
+    bool vbat_ok;           // the device answers `vbat`; cleared if it doesn't
+    uint16_t vbat_mv;       // last reading, 0 until read
+    uint16_t vbat_sent_mv;  // last reading sent to the app
+    uint32_t vbat_due_ms;
+
     // Wi-Fi status last sent to the app
     rc_wifi_status_t wifi;
     bool wifi_sent;
@@ -226,6 +233,9 @@ void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms);
 void rc_bridge_parse_info(const char *text, char *model, size_t model_cap, uint16_t *max_points, uint16_t *lcd_w,
                           uint16_t *lcd_h);
 
+// Parse a NanoVNA `vbat` reply ("4123 mV"). Returns millivolts, or -1 if it isn't one.
+int rc_bridge_parse_vbat(const char *text);
+
 // The shell commands that put `d` on a NanoVNA screen with up to `max_points` sweep points.
 // Fills `cmds` and returns how many.
 int rc_display_commands(const rc_display_t *d, uint16_t max_points, char cmds[][40], int cap);
@@ -234,6 +244,8 @@ int rc_display_commands(const rc_display_t *d, uint16_t max_points, char cmds[][
 #define RC_FRAME_OTA 0x02
 #define RC_OTA_IDLE_TIMEOUT_MS 30000
 #define RC_WIFI_POLL_MS 1000
+#define RC_BATTERY_POLL_MS 30000
+#define RC_BATTERY_DELTA_MV 20  // smaller changes than this aren't re-sent
 #define RC_OTA_MAX_SIZE (12u * 1024u * 1024u)
 
 #ifdef __cplusplus

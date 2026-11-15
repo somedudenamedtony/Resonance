@@ -33,6 +33,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | --- | --- |
 | `device` | `connected: boolean`, `model?: string`, `firmware?: string`, `maxPoints?: number`, `bridgeVersion: string`, `features?: string[]` |
 | `wifi` | `mode: "ap" \| "sta"`, `apSsid: string`, `apPassword?: string`, `networks?: string[]`, `ssid?: string`, `state?: "connecting" \| "connected" \| "failed"`, `ip?: string`, `rssi?: number` (dBm), `reason?: string` |
+| `battery` | `nanovna?: { mV: number }` (the NanoVNA's own battery) |
 | `scan.begin` | `id`, `points`, `ports` |
 | `scan.end` | `id`, `durationMs`, `cancelled?: boolean` |
 | `raw.reply` | `command`, `text` |
@@ -64,6 +65,13 @@ known. While `installing`, `received` of `total` counts bytes of firmware plus a
 why it `failed`. `rolledBack` names a version that didn't start properly, so the bootloader went
 back to `current`. `update.install` installs the latest release whatever its version (the app only
 offers it when newer). Older firmware never sends `update`.
+
+The bridge sends `battery` once it has read the NanoVNA's battery (`vbat`, right after the
+probe and then every 30 s while the shell is otherwise idle), again when the reading moves by
+20 mV or more, and after `device` when an app connects or says `hello`. Nothing is sent for a
+NanoVNA that reads 0 mV (no battery fitted) or whose firmware doesn't know `vbat`. The reading is
+dropped when the NanoVNA disconnects (`device` with `connected: false`). While the NanoVNA is
+powered over USB it charges, so the voltage reads high. Bridges before 0.5.3 never send `battery`.
 
 Only one scan runs at a time. A `scan` while one is in flight gets `error` `busy`.
 
@@ -161,6 +169,8 @@ against NanoVNA-D's `main.c`:
 
 - On attach: press Enter to sync on a prompt, then `info` (model from `Board:`, max points
   from `[p:NNN`), `version`, `help` (binary support if `scan_bin` is listed).
+- Between jobs, `vbat` ("4123 mV") every 30 s for the battery. A scan that arrives during it
+  waits for it; firmware that answers `vbat?` isn't asked again until it's reattached.
 - Each command's response is `<echo>\r\n<body>ch> `. The bridge finds the body by matching
   the echoed command, so stray banners and prompts are ignored.
 - Binary scans are read by length (`u16 mask`, `u16 points`, then records), never by

@@ -50,6 +50,8 @@ export interface SimulatorOptions {
   antenna: RlcAntenna | null;
   /** A coax cable on port 1 (for the coax test) instead of the antenna. */
   coax: CoaxModel | null;
+  /** The simulated NanoVNA's battery in millivolts; 0 means no battery fitted. */
+  batteryMv: number;
 }
 
 export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
@@ -61,6 +63,7 @@ export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
   standard: null,
   antenna: null,
   coax: null,
+  batteryMv: 3910,
 };
 
 /**
@@ -104,7 +107,13 @@ export class SimulatedTransport implements Transport {
   /** Change simulator settings; re-announces device state. */
   configure(patch: Partial<SimulatorOptions>): void {
     this.options = { ...this.options, ...patch };
-    if (this.open) this.emit(this.deviceMessage());
+    if (this.open) this.announceDevice();
+  }
+
+  private announceDevice(): void {
+    this.emit(this.deviceMessage());
+    if (this.options.deviceConnected && this.options.batteryMv > 0)
+      this.emit({ v: PROTOCOL_VERSION, type: "battery", nanovna: { mV: this.options.batteryMv } });
   }
 
   /** The antenna currently on port 1. */
@@ -130,7 +139,7 @@ export class SimulatedTransport implements Transport {
     switch (msg.type) {
       case "hello":
         this.later(20, () => {
-          this.emit(this.deviceMessage());
+          this.announceDevice();
           this.emit(this.release);
         });
         break;

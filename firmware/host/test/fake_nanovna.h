@@ -9,6 +9,7 @@ typedef struct {
     bool binary;          // NanoVNA-D style: supports scan_bin / binary outmask
     uint16_t max_points;  // 101 classic, 401 H4
     bool silent;          // stop answering (to test timeouts)
+    int vbat_mv;          // what `vbat` reports; -1 (the default) answers "vbat?" like old firmware
     // Output waiting to be delivered to the bridge.
     uint8_t out[65536];
     size_t out_len;

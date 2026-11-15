@@ -631,6 +631,81 @@ static void test_bridge_timeout_then_recovers(void)
     h_free(h);
 }
 
+static void test_parse_vbat(void)
+{
+    CHECK(rc_bridge_parse_vbat("4123 mV\r\n") == 4123);
+    CHECK(rc_bridge_parse_vbat("\r\n3700 mV") == 3700);
+    CHECK(rc_bridge_parse_vbat("0 mV") == 0);
+    CHECK(rc_bridge_parse_vbat("vbat?") == -1);
+    CHECK(rc_bridge_parse_vbat("") == -1);
+    CHECK(rc_bridge_parse_vbat("4123") == -1);
+    CHECK(rc_bridge_parse_vbat("99999999 mV") == -1);
+}
+
+static int count_type(harness_t *h, const char *type);
+
+static int battery_mv(harness_t *h)
+{
+    cJSON *o = h_last(h, "battery");
+    int mv = o ? (int)num(cJSON_GetObjectItem(o, "nanovna"), "mV") : -1;
+    cJSON_Delete(o);
+    return mv;
+}
+
+static int count_cmd(harness_t *h, const char *cmd)
+{
+    int n = 0;
+    for (int i = 0; i < h->dev.nlog; i++) n += strcmp(h->dev.log[i], cmd) == 0;
+    return n;
+}
+
+static void test_bridge_battery(void)
+{
+    harness_t *h = h_new(true, 401);
+    h->dev.vbat_mv = 4012;
+    h_attach(h);
+    CHECK(battery_mv(h) == 4012);  // read right after the probe
+    CHECK(count_type(h, "battery") == 1);
+
+    // Small wobbles aren't re-sent; a real change is, on the next poll.
+    h->dev.vbat_mv = 4020;
+    h_run(h, RC_BATTERY_POLL_MS + 100);
+    CHECK(count_cmd(h, "vbat") == 2);
+    CHECK(count_type(h, "battery") == 1);
+    h->dev.vbat_mv = 3950;
+    h_run(h, RC_BATTERY_POLL_MS + 100);
+    CHECK(count_type(h, "battery") == 2 && battery_mv(h) == 3950);
+
+    // An app that (re)connects gets the last reading straight away.
+    h_client(h, "{\"v\":1,\"type\":\"hello\",\"appVersion\":\"t\"}");
+    CHECK(count_type(h, "battery") == 3 && battery_mv(h) == 3950);
+
+    // A scan that arrives mid-read waits for it instead of being refused.
+    h->b->vbat_due_ms = h->now;
+    rc_bridge_tick(h->b, h->now);
+    CHECK(h->b->job == RC_JOB_BATTERY);
+    h->ntexts = 0;
+    check_full_scan(h, 13850000, 14500000, 201);
+    CHECK(h_last(h, "error") == NULL);
+    h_free(h);
+
+    // No battery fitted: the device reads 0 mV, and nothing is sent.
+    h = h_new(true, 401);
+    h->dev.vbat_mv = 0;
+    h_attach(h);
+    CHECK(count_type(h, "battery") == 0);
+    h_free(h);
+
+    // Firmware without `vbat` is asked once.
+    h = h_new(false, 101);
+    h_attach(h);
+    h_run(h, 2 * RC_BATTERY_POLL_MS + 100);
+    CHECK(count_cmd(h, "vbat") == 1);
+    CHECK(count_type(h, "battery") == 0);
+    CHECK(h->b->dev == RC_DEV_READY);
+    h_free(h);
+}
+
 static void test_bridge_raw(void)
 {
     harness_t *h = h_new(true, 401);
@@ -1182,6 +1257,8 @@ int main(void)
     RUN(test_bridge_cancel_then_rescan);
     RUN(test_bridge_detach_mid_scan);
     RUN(test_bridge_timeout_then_recovers);
+    RUN(test_parse_vbat);
+    RUN(test_bridge_battery);
     RUN(test_bridge_raw);
     RUN(test_bridge_capture);
     RUN(test_bridge_ota);

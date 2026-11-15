@@ -7,6 +7,7 @@ import {
   type UpdateTarget,
   FRAME_CAPTURE,
   frameKind,
+  type BatteryStatus,
   type ClientMessage,
   type DeviceStatus,
   type DisplayView,
@@ -74,6 +75,8 @@ export class BridgeClient {
   wifi: WifiStatus | null = null;
   /** Sent by bridge firmware that can update itself from GitHub; null otherwise. */
   release: ReleaseUpdateStatus | null = null;
+  /** Battery readings; null until the bridge sends one, and again once the NanoVNA goes. */
+  battery: BatteryStatus | null = null;
   onChange?: () => void;
 
   private nextId = 1;
@@ -114,6 +117,7 @@ export class BridgeClient {
       this.wifi = null;
       this.displaySent = undefined;
       this.release = null;
+      this.battery = null;
       this.failPending(new BridgeError("disconnected", "Lost the connection to the bridge."));
       this.failUpdate(new BridgeError("disconnected", "Lost the connection during the update."));
       this.changed();
@@ -347,6 +351,7 @@ export class BridgeClient {
       case "device": {
         const { v: _v, type: _t, ...status } = msg;
         this.device = status;
+        if (!status.connected) this.battery = null;
         this.flushDisplay();
         if (!status.connected) this.failPending(new BridgeError("no_device", "The NanoVNA was disconnected."));
         this.changed();
@@ -355,6 +360,12 @@ export class BridgeClient {
       case "wifi": {
         const { v: _v, type: _t, ...status } = msg;
         this.wifi = status;
+        this.changed();
+        break;
+      }
+      case "battery": {
+        const { v: _v, type: _t, ...status } = msg;
+        this.battery = status;
         this.changed();
         break;
       }
