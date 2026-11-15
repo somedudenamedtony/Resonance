@@ -3,6 +3,7 @@ import { Icon } from "./components/Icon";
 import { StatusBar } from "./components/StatusBar";
 import { Advanced } from "./screens/Advanced";
 import { Antennas, Profile } from "./screens/Antennas";
+import { Buddistick } from "./screens/Buddistick";
 import { Calibrate } from "./screens/Calibrate";
 import { Check } from "./screens/Check";
 import { Coax } from "./screens/Coax";
@@ -36,6 +37,7 @@ export function App() {
         {r.name === "tune" && <Tune targetHz={r.targetHz} />}
         {r.name === "find" && <Find targetHz={r.targetHz} profileId={r.profileId} />}
         {r.name === "meter" && <Meter />}
+        {r.name === "buddistick" && <Buddistick />}
         {r.name === "antennas" && <Antennas />}
         {r.name === "profile" && <Profile id={r.id} />}
         {r.name === "settings" && <Settings />}

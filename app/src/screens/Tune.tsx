@@ -329,7 +329,7 @@ function Instruction({ reading, setupType }: { reading: TuneReading; setupType: 
 }
 
 /** Slim scale: target in the middle, resonance marker within ±5%. */
-function TuneScale({ reading, targetHz }: { reading: TuneReading; targetHz: number }) {
+export function TuneScale({ reading, targetHz }: { reading: Pick<TuneReading, "resonanceHz">; targetHz: number }) {
   const W = 340;
   const span = 0.05;
   const x = (hz: number) => {
