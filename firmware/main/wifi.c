@@ -7,7 +7,6 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
-#include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -63,16 +62,13 @@ static void load_str(nvs_handle_t h, const char *key, char *out, size_t cap)
     if (nvs_get_str(h, key, out, &len) != ESP_OK) out[0] = 0;
 }
 
-// First boot: make an 8-character WPA2 password without look-alike characters.
-static void ensure_ap_password(nvs_handle_t h, char *out, size_t cap)
+// The hotspot password is fixed so anyone can join without the serial log. Bridges from
+// 0.5.0 and earlier stored a random one under "ap_pass"; drop it so they switch too.
+#define AP_PASSWORD "Resonance"
+
+static void forget_old_ap_password(nvs_handle_t h)
 {
-    load_str(h, "ap_pass", out, cap);
-    if (strlen(out) >= 8) return;
-    static const char alphabet[] = "abcdefghjkmnpqrstuvwxyz23456789";
-    for (int i = 0; i < 8; i++) out[i] = alphabet[esp_random() % (sizeof alphabet - 1)];
-    out[8] = 0;
-    nvs_set_str(h, "ap_pass", out);
-    nvs_commit(h);
+    if (nvs_erase_key(h, "ap_pass") == ESP_OK) nvs_commit(h);
 }
 
 // ---- saved networks (NVS) ----
@@ -387,8 +383,8 @@ void wifi_start(void)
 
     nvs_handle_t h;
     ESP_ERROR_CHECK(nvs_open(NS, NVS_READWRITE, &h));
-    char ap_pass[65];
-    ensure_ap_password(h, ap_pass, sizeof ap_pass);
+    const char *ap_pass = AP_PASSWORD;
+    forget_old_ap_password(h);
     load_networks(h);
     nvs_close(h);
 

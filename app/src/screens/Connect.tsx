@@ -63,7 +63,7 @@ export function Connect() {
 
       {l !== "open" && !sim && (
         <p class="muted" style={{ marginTop: "12px" }}>
-          Join the Resonance Wi-Fi network on this phone, then come back. The app reconnects on its own.
+          Join the Resonance Wi-Fi network on this phone (password: Resonance), then come back. The app reconnects on its own.
         </p>
       )}
       {l === "open" && !d?.connected && (
