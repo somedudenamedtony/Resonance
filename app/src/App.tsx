@@ -37,7 +37,7 @@ export function App() {
         {r.name === "tune" && <Tune targetHz={r.targetHz} />}
         {r.name === "find" && <Find targetHz={r.targetHz} profileId={r.profileId} />}
         {r.name === "meter" && <Meter />}
-        {r.name === "buddistick" && <Buddistick />}
+        {r.name === "buddistick" && <Buddistick bandId={r.bandId} targetHz={r.targetHz} />}
         {r.name === "antennas" && <Antennas />}
         {r.name === "profile" && <Profile id={r.id} />}
         {r.name === "settings" && <Settings />}
