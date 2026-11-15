@@ -18,12 +18,16 @@ import {
   toSweep,
 } from "../history";
 import { checkProfileId, go, profiles, refreshProfiles, store } from "../state";
+import { BUDDI_BANDS } from "../buddistick";
+
+const BUDDI_BAND_IDS: ReadonlySet<string> = new Set(BUDDI_BANDS);
 
 export const TYPE_LABEL: Record<AntennaType, string> = {
   dipole: "Dipole",
   efhw: "End-fed half-wave",
   vertical: "Vertical",
   mobile: "Mobile",
+  buddistick: "Buddistick",
   other: "Other",
 };
 
@@ -245,6 +249,13 @@ export function Profile({ id }: { id: string }) {
         {p.targetHz ? `, for ${formatHz(p.targetHz)}` : ""}
       </p>
 
+      {p.type === "buddistick" && (
+        <div class="actions single">
+          <button class="btn primary" onClick={() => go({ name: "buddistick", bandId: p.bands.find((b) => BUDDI_BAND_IDS.has(b)) })}>
+            Tune with the Buddistick coach
+          </button>
+        </div>
+      )}
       <div class={`actions${p.bands.length && p.targetHz ? "" : " single"}`}>
         {p.bands.length > 0 && (
           <button
