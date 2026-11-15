@@ -48,7 +48,7 @@ The bridge sends `device` unsolicited whenever the NanoVNA connects or disconnec
 The bridge sends `wifi` after `device` when an app connects or says `hello`, and again whenever
 its Wi-Fi changes (signal strength alone doesn't count). `networks` lists the saved networks by
 name (up to 5; passwords are never sent back) and `apPassword` is the password of the bridge's own
-network; bridges before 0.5.0 leave both out. With `mode: "sta"` (at least one saved network) the
+network (always `Resonance` since 0.5.2); bridges before 0.5.0 leave both out. With `mode: "sta"` (at least one saved network) the
 bridge joins whichever saved network is in range, preferring ones that haven't just failed, then the
 strongest signal. `ssid` is the one it's joining or joined (absent while it's still looking),
 `state` says how that is going, `ip` and `rssi` are present once connected, and `reason` says in

@@ -308,7 +308,7 @@ Three tabs: **Home** (jobs), **Antennas** (profiles and history), **Settings**. 
 | Accuracy | SWR within ±0.05 and resonance within 0.1% of NanoVNA-Saver on the same device and cal. |
 | Outdoors | Readable in sunlight: high-contrast theme, verdict text 28 px+, tap targets 48 px+. Works with gloves (no fine gestures required). |
 | Accessibility | Every verdict and value available as text, not color alone. VoiceOver labels on all controls. |
-| Security | WPA2 on the AP with a per-device password printed on first boot. No external network calls. |
+| Security | WPA2 on the AP with the fixed password `Resonance` (random per device before 0.5.2). No external network calls. |
 | Testability | Analysis module unit-tested against recorded `.s1p` fixtures. A simulated NanoVNA mode in the app for UI work without hardware. |
 
 ## Milestones
