@@ -192,6 +192,8 @@ export class SimulatedTransport implements Transport {
         this.displayed = null;
         break;
       case "wifi.set":
+      case "wifi.add":
+      case "wifi.forget":
         this.later(20, () => this.emit({ v: 1, type: "ok", for: msg.type }));
         break;
       case "ota.begin":

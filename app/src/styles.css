@@ -770,6 +770,43 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wifi-address {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.wifi-address a {
+  color: var(--trace);
+}
+
+.sub-title {
+  margin: 18px 4px 8px;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.saved-networks .row {
+  align-items: center;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--trace-wash);
+  color: var(--trace);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 a.value {

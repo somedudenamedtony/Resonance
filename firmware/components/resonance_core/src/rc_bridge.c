@@ -94,11 +94,15 @@ static const char *wifi_state_name(rc_wifi_state_t s)
 static void send_wifi(rc_bridge_t *b, const rc_wifi_status_t *st)
 {
     cJSON *o = msg("wifi");
-    bool sta = st->ssid[0] != 0;
+    bool sta = st->n_networks > 0 || st->ssid[0] != 0;
     cJSON_AddStringToObject(o, "mode", sta ? "sta" : "ap");
     cJSON_AddStringToObject(o, "apSsid", st->ap_ssid);
+    if (st->ap_pass[0]) cJSON_AddStringToObject(o, "apPassword", st->ap_pass);
+    cJSON *nets = cJSON_AddArrayToObject(o, "networks");
+    for (int i = 0; i < st->n_networks && i < RC_WIFI_MAX_NETWORKS; i++)
+        cJSON_AddItemToArray(nets, cJSON_CreateString(st->networks[i]));
     if (sta) {
-        cJSON_AddStringToObject(o, "ssid", st->ssid);
+        if (st->ssid[0]) cJSON_AddStringToObject(o, "ssid", st->ssid);
         cJSON_AddStringToObject(o, "state", wifi_state_name(st->state));
         if (st->state == RC_WIFI_CONNECTED) {
             cJSON_AddStringToObject(o, "ip", st->ip);
@@ -107,6 +111,16 @@ static void send_wifi(rc_bridge_t *b, const rc_wifi_status_t *st)
         if (st->reason[0] && st->state != RC_WIFI_CONNECTED) cJSON_AddStringToObject(o, "reason", st->reason);
     }
     send_json(b, o);
+}
+
+static bool wifi_status_equal(const rc_wifi_status_t *a, const rc_wifi_status_t *b)
+{
+    if (a->state != b->state || a->n_networks != b->n_networks) return false;
+    if (strcmp(a->ap_ssid, b->ap_ssid) != 0 || strcmp(a->ap_pass, b->ap_pass) != 0) return false;
+    if (strcmp(a->ssid, b->ssid) != 0 || strcmp(a->ip, b->ip) != 0 || strcmp(a->reason, b->reason) != 0) return false;
+    for (int i = 0; i < a->n_networks && i < RC_WIFI_MAX_NETWORKS; i++)
+        if (strcmp(a->networks[i], b->networks[i]) != 0) return false;
+    return true;
 }
 
 // Ask the platform for the Wi-Fi status; send it if `force`, or if it changed since last sent.
@@ -118,12 +132,13 @@ static void poll_wifi(rc_bridge_t *b, bool force)
     memset(&st, 0, sizeof st);
     b->io.wifi_status(b->io.user, &st);
     st.ap_ssid[sizeof st.ap_ssid - 1] = 0;
+    st.ap_pass[sizeof st.ap_pass - 1] = 0;
     st.ssid[sizeof st.ssid - 1] = 0;
     st.ip[sizeof st.ip - 1] = 0;
     st.reason[sizeof st.reason - 1] = 0;
-    const rc_wifi_status_t *w = &b->wifi;
-    bool changed = !b->wifi_sent || st.state != w->state || strcmp(st.ap_ssid, w->ap_ssid) != 0 ||
-                   strcmp(st.ssid, w->ssid) != 0 || strcmp(st.ip, w->ip) != 0 || strcmp(st.reason, w->reason) != 0;
+    if (st.n_networks > RC_WIFI_MAX_NETWORKS) st.n_networks = RC_WIFI_MAX_NETWORKS;
+    for (int i = 0; i < RC_WIFI_MAX_NETWORKS; i++) st.networks[i][sizeof st.networks[i] - 1] = 0;
+    bool changed = !b->wifi_sent || !wifi_status_equal(&st, &b->wifi);
     b->wifi = st;
     b->wifi_sent = true;
     b->wifi_next_ms = b->now + RC_WIFI_POLL_MS;
@@ -996,27 +1011,73 @@ static void handle_update(rc_bridge_t *b, bool install)
     poll_update(b, true);
 }
 
-static void handle_wifi(rc_bridge_t *b, const cJSON *o)
+static void send_ok(rc_bridge_t *b, const char *for_type)
+{
+    cJSON *r = msg("ok");
+    cJSON_AddStringToObject(r, "for", for_type);
+    send_json(b, r);
+}
+
+// Network names are 1 to 32 bytes; WPA2 passwords are empty (open network) or 8 to 63 characters
+// (64 for a hex key).
+static bool check_network(rc_bridge_t *b, const char *ssid, const char *pw)
+{
+    if (!ssid || !ssid[0] || strlen(ssid) > 32) {
+        send_error(b, "bad_request", "Enter the Wi-Fi network's name (up to 32 characters).", -1);
+        return false;
+    }
+    size_t n = pw ? strlen(pw) : 0;
+    if (n != 0 && (n < 8 || n > 64)) {
+        send_error(b, "bad_request", "Wi-Fi passwords are 8 to 63 characters (leave it empty for an open network).", -1);
+        return false;
+    }
+    return true;
+}
+
+static void wifi_add(rc_bridge_t *b, const char *for_type, const char *ssid, const char *pw)
+{
+    if (!check_network(b, ssid, pw)) return;
+    char err[96] = "";
+    if (!b->io.wifi_add || !b->io.wifi_add(b->io.user, ssid, pw ? pw : "", err, sizeof err)) {
+        send_error(b, "internal", err[0] ? err : "Couldn't save the Wi-Fi network.", -1);
+        return;
+    }
+    send_ok(b, for_type);
+    poll_wifi(b, true);
+}
+
+static void wifi_forget(rc_bridge_t *b, const char *for_type, const char *ssid)
+{
+    if (!b->io.wifi_forget || !b->io.wifi_forget(b->io.user, ssid ? ssid : "")) {
+        send_error(b, "internal", "Couldn't save the Wi-Fi settings.", -1);
+        return;
+    }
+    send_ok(b, for_type);
+    poll_wifi(b, true);
+}
+
+// Older apps: `wifi.set` with mode "sta" saves one network, mode "ap" forgets them all.
+static void handle_wifi_set(rc_bridge_t *b, const cJSON *o)
 {
     const char *mode = get_string(o, "mode");
     if (!mode || (strcmp(mode, "ap") != 0 && strcmp(mode, "sta") != 0)) {
         send_error(b, "bad_request", "wifi.set needs mode ap or sta", -1);
         return;
     }
-    bool sta = strcmp(mode, "sta") == 0;
+    if (strcmp(mode, "sta") == 0)
+        wifi_add(b, "wifi.set", get_string(o, "ssid"), get_string(o, "password"));
+    else
+        wifi_forget(b, "wifi.set", "");
+}
+
+static void handle_wifi_forget(rc_bridge_t *b, const cJSON *o)
+{
     const char *ssid = get_string(o, "ssid");
-    const char *pw = get_string(o, "password");
-    if (sta && (!ssid || !ssid[0])) {
-        send_error(b, "bad_request", "Station mode needs an SSID.", -1);
+    if (!ssid || !ssid[0]) {
+        send_error(b, "bad_request", "wifi.forget needs the network's ssid", -1);
         return;
     }
-    if (!b->io.wifi_set || !b->io.wifi_set(b->io.user, sta, ssid ? ssid : "", pw ? pw : "")) {
-        send_error(b, "internal", "Couldn't save the Wi-Fi settings.", -1);
-        return;
-    }
-    cJSON *r = msg("ok");
-    cJSON_AddStringToObject(r, "for", "wifi.set");
-    send_json(b, r);
+    wifi_forget(b, "wifi.forget", ssid);
 }
 
 void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_t now_ms)
@@ -1048,7 +1109,11 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
     } else if (strcmp(type, "display.off") == 0) {
         handle_display_off(b);
     } else if (strcmp(type, "wifi.set") == 0) {
-        handle_wifi(b, o);
+        handle_wifi_set(b, o);
+    } else if (strcmp(type, "wifi.add") == 0) {
+        wifi_add(b, "wifi.add", get_string(o, "ssid"), get_string(o, "password"));
+    } else if (strcmp(type, "wifi.forget") == 0) {
+        handle_wifi_forget(b, o);
     } else if (strcmp(type, "ota.begin") == 0) {
         handle_ota_begin(b, o);
     } else if (strcmp(type, "update.check") == 0) {

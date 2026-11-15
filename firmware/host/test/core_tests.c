@@ -256,7 +256,44 @@ typedef struct {
     bool ota_fail_end;
     rc_wifi_status_t wifi;
     int wifi_polls;
+    char wifi_last_add[33], wifi_last_pass[65], wifi_last_forget[33];
+    int wifi_adds, wifi_forgets;
 } harness_t;
+
+// A fake platform list: add/forget edit h->wifi.networks, like the ESP32 does.
+static bool h_wifi_add(void *u, const char *ssid, const char *pw, char *err, size_t cap)
+{
+    harness_t *h = u;
+    h->wifi_adds++;
+    snprintf(h->wifi_last_add, sizeof h->wifi_last_add, "%s", ssid);
+    snprintf(h->wifi_last_pass, sizeof h->wifi_last_pass, "%s", pw);
+    for (int i = 0; i < h->wifi.n_networks; i++)
+        if (strcmp(h->wifi.networks[i], ssid) == 0) return true;
+    if (h->wifi.n_networks >= RC_WIFI_MAX_NETWORKS) {
+        snprintf(err, cap, "The bridge can save up to 5 networks.");
+        return false;
+    }
+    snprintf(h->wifi.networks[h->wifi.n_networks++], sizeof h->wifi.networks[0], "%s", ssid);
+    return true;
+}
+
+static bool h_wifi_forget(void *u, const char *ssid)
+{
+    harness_t *h = u;
+    h->wifi_forgets++;
+    snprintf(h->wifi_last_forget, sizeof h->wifi_last_forget, "%s", ssid);
+    if (!ssid[0]) {
+        h->wifi.n_networks = 0;
+        return true;
+    }
+    for (int i = 0; i < h->wifi.n_networks; i++) {
+        if (strcmp(h->wifi.networks[i], ssid) != 0) continue;
+        memmove(h->wifi.networks[i], h->wifi.networks[i + 1], (size_t)(h->wifi.n_networks - i - 1) * sizeof h->wifi.networks[0]);
+        h->wifi.n_networks--;
+        break;
+    }
+    return true;
+}
 
 static void h_wifi_status(void *u, rc_wifi_status_t *out)
 {
@@ -880,6 +917,89 @@ static void test_bridge_wifi_status(void)
     h_free(h);
 }
 
+static int json_array_size(cJSON *o, const char *key)
+{
+    cJSON *a = cJSON_GetObjectItem(o, key);
+    return cJSON_IsArray(a) ? cJSON_GetArraySize(a) : -1;
+}
+
+static const char *json_array_str(cJSON *o, const char *key, int i)
+{
+    cJSON *it = cJSON_GetArrayItem(cJSON_GetObjectItem(o, key), i);
+    return cJSON_IsString(it) ? it->valuestring : "";
+}
+
+static void test_bridge_wifi_networks(void)
+{
+    harness_t *h = h_new(true, 401);
+    rc_bridge_io_t io = h->b->io;
+    io.wifi_status = h_wifi_status;
+    io.wifi_add = h_wifi_add;
+    io.wifi_forget = h_wifi_forget;
+    rc_bridge_init(h->b, &io, 0);
+    snprintf(h->wifi.ap_ssid, sizeof h->wifi.ap_ssid, "Resonance-AB12");
+    snprintf(h->wifi.ap_pass, sizeof h->wifi.ap_pass, "k3mnpq7x");
+    rc_bridge_client_connected(h->b, h->now);
+
+    // Hotspot only: the hotspot password and an empty list are reported.
+    cJSON *w = h_last(h, "wifi");
+    CHECK(w && strcmp(str(w, "mode"), "ap") == 0 && strcmp(str(w, "apPassword"), "k3mnpq7x") == 0);
+    CHECK(w && json_array_size(w, "networks") == 0);
+    cJSON_Delete(w);
+
+    // Two networks saved; the list is sent straight away, before the bridge has joined either.
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"HomeNet\",\"password\":\"hunter22\"}");
+    CHECK(h->wifi_adds == 1 && strcmp(h->wifi_last_pass, "hunter22") == 0);
+    cJSON *ok = h_last(h, "ok");
+    CHECK(ok && strcmp(str(ok, "for"), "wifi.add") == 0);
+    cJSON_Delete(ok);
+    h->wifi.state = RC_WIFI_CONNECTING;
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"RV Park\",\"password\":\"\"}");
+    w = h_last(h, "wifi");
+    CHECK(w && strcmp(str(w, "mode"), "sta") == 0 && json_array_size(w, "networks") == 2);
+    CHECK(w && strcmp(json_array_str(w, "networks", 1), "RV Park") == 0);
+    CHECK(w && strcmp(str(w, "state"), "connecting") == 0 && !cJSON_GetObjectItem(w, "ssid"));
+    CHECK(w && !strstr(h->texts[h->ntexts - 1], "hunter22"));  // passwords never go back out
+    cJSON_Delete(w);
+
+    // Bad input is refused before it reaches the platform.
+    int adds = h->wifi_adds;
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"\",\"password\":\"hunter22\"}");
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"Short\",\"password\":\"abc\"}");
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"123456789012345678901234567890123\"}");
+    CHECK(h->wifi_adds == adds && count_type(h, "error") == 3);
+
+    // A full list comes back with the platform's reason.
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"C\"}");
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"D\"}");
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"E\"}");
+    h_client(h, "{\"v\":1,\"type\":\"wifi.add\",\"ssid\":\"F\"}");
+    cJSON *e = h_last(h, "error");
+    CHECK(e && strstr(str(e, "message"), "up to 5"));
+    cJSON_Delete(e);
+
+    // Forget one, then everything through the older wifi.set.
+    h_client(h, "{\"v\":1,\"type\":\"wifi.forget\",\"ssid\":\"HomeNet\"}");
+    CHECK(strcmp(h->wifi_last_forget, "HomeNet") == 0);
+    w = h_last(h, "wifi");
+    CHECK(w && json_array_size(w, "networks") == 4 && strcmp(json_array_str(w, "networks", 0), "RV Park") == 0);
+    cJSON_Delete(w);
+    h_client(h, "{\"v\":1,\"type\":\"wifi.forget\"}");
+    e = h_last(h, "error");
+    CHECK(e && strcmp(str(e, "code"), "bad_request") == 0);
+    cJSON_Delete(e);
+    h_client(h, "{\"v\":1,\"type\":\"wifi.set\",\"mode\":\"ap\"}");
+    CHECK(h->wifi_forgets == 2 && h->wifi_last_forget[0] == 0 && h->wifi.n_networks == 0);
+    ok = h_last(h, "ok");
+    CHECK(ok && strcmp(str(ok, "for"), "wifi.set") == 0);
+    cJSON_Delete(ok);
+
+    // wifi.set sta from an older app saves one network.
+    h_client(h, "{\"v\":1,\"type\":\"wifi.set\",\"mode\":\"sta\",\"ssid\":\"HomeNet\",\"password\":\"hunter22\"}");
+    CHECK(h->wifi.n_networks == 1 && strcmp(h->wifi_last_add, "HomeNet") == 0);
+    h_free(h);
+}
+
 // ---------------------------------------------------------------- release updates
 
 static void test_version_compare(void)
@@ -1066,6 +1186,7 @@ int main(void)
     RUN(test_bridge_capture);
     RUN(test_bridge_ota);
     RUN(test_bridge_wifi_status);
+    RUN(test_bridge_wifi_networks);
     RUN(test_display_commands);
     RUN(test_bridge_display);
     RUN(test_version_compare);

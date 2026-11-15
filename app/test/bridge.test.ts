@@ -188,6 +188,43 @@ describe("bridge client against the simulator", () => {
     client.stop();
   });
 
+  it("saves and forgets several Wi-Fi networks, falling back to wifi.set on older bridges", async () => {
+    const { sim, client } = await connected();
+    const sent: unknown[] = [];
+    const send = sim.send.bind(sim);
+    sim.send = (m) => {
+      sent.push(m);
+      send(m);
+    };
+    // Older bridge: no networks list, so one network through wifi.set.
+    sim.onText?.(JSON.stringify({ v: 1, type: "wifi", mode: "ap", apSsid: "Resonance-AB12" }));
+    expect(client.canSaveNetworks).toBe(false);
+    await client.addWifiNetwork("HomeNet", "hunter22");
+    await client.forgetWifiNetwork("HomeNet");
+    expect(sent).toEqual([
+      { v: 1, type: "wifi.set", mode: "sta", ssid: "HomeNet", password: "hunter22" },
+      { v: 1, type: "wifi.set", mode: "ap" },
+    ]);
+    // 0.5.0 and later: a list, wifi.add and wifi.forget.
+    sent.length = 0;
+    sim.onText?.(
+      JSON.stringify({ v: 1, type: "wifi", mode: "sta", apSsid: "Resonance-AB12", apPassword: "k3mnpq7x", networks: ["HomeNet"], state: "connecting" }),
+    );
+    expect(client.canSaveNetworks).toBe(true);
+    expect(client.wifi?.networks).toEqual(["HomeNet"]);
+    await client.addWifiNetwork("RV Park", "");
+    await client.forgetWifiNetwork("HomeNet");
+    expect(sent).toEqual([
+      { v: 1, type: "wifi.add", ssid: "RV Park", password: "" },
+      { v: 1, type: "wifi.forget", ssid: "HomeNet" },
+    ]);
+    // A refusal (list full) rejects with the bridge's words.
+    sim.send = () =>
+      setTimeout(() => sim.onText?.(JSON.stringify({ v: 1, type: "error", code: "internal", message: "The bridge can save up to 5 networks." })), 0);
+    await expect(client.addWifiNetwork("F", "")).rejects.toThrow("up to 5");
+    client.stop();
+  });
+
   it("checks GitHub for a release and installs it through the bridge", async () => {
     const { client } = await connected();
     await waitFor(() => client.release !== null);

@@ -267,40 +267,44 @@ function signalLabel(rssi: number): string {
   return "Very weak";
 }
 
-const WIFI_STATE: Record<NonNullable<WifiStatus["state"]>, { tone: "ok" | "warn" | "bad"; text: string }> = {
-  connected: { tone: "ok", text: "Connected" },
-  connecting: { tone: "warn", text: "Connecting…" },
-  failed: { tone: "bad", text: "Couldn't connect" },
-};
+const BRIDGE_NAME = "resonance.local";
+const HOTSPOT_ADDRESS = "192.168.4.1";
 
 function WifiStatusRows({ w }: { w: WifiStatus }) {
-  const st = w.mode === "sta" && w.state ? WIFI_STATE[w.state] : null;
+  const tone = w.state === "connected" ? "ok" : w.state === "failed" ? "bad" : "warn";
+  const text =
+    w.mode === "ap"
+      ? "Hotspot only"
+      : w.state === "connected"
+        ? `Connected to ${w.ssid}`
+        : w.state === "failed"
+          ? "Couldn't connect"
+          : w.ssid
+            ? `Joining ${w.ssid}…`
+            : "Looking for a saved network…";
   return (
     <>
       <div class="rows wifi-status">
         <div class="row">
-          <span>Bridge network</span>
-          <span class="value">{w.apSsid}</span>
+          <span>Status</span>
+          <span class="value wifi-state">
+            {w.mode === "sta" && <span class={`status-dot ${tone}`} aria-hidden="true" />}
+            {text}
+          </span>
         </div>
-        <div class="row">
-          <span>Home Wi-Fi</span>
-          <span class="value">{w.mode === "sta" ? w.ssid : "Not set up (hotspot only)"}</span>
-        </div>
-        {st && (
-          <div class="row">
-            <span>Status</span>
-            <span class="value wifi-state">
-              <span class={`status-dot ${st.tone}`} aria-hidden="true" />
-              {st.text}
-            </span>
-          </div>
-        )}
         {w.state === "connected" && w.ip && (
           <div class="row">
-            <span>IP address</span>
-            <a class="value num" href={`http://${w.ip}/`}>
-              {w.ip}
-            </a>
+            <span>Address</span>
+            <span class="value wifi-address">
+              {w.networks && (
+                <a class="num" href={`http://${BRIDGE_NAME}/`}>
+                  {BRIDGE_NAME}
+                </a>
+              )}
+              <a class="num" href={`http://${w.ip}/`}>
+                {w.ip}
+              </a>
+            </span>
           </div>
         )}
         {w.state === "connected" && w.rssi !== undefined && (
@@ -314,76 +318,188 @@ function WifiStatusRows({ w }: { w: WifiStatus }) {
       </div>
       {w.state === "failed" && (
         <p class="field-error" role="status">
+          {w.ssid && !w.reason?.startsWith("None") ? `${w.ssid}: ` : ""}
           {w.reason ?? "The bridge couldn't join your Wi-Fi."} It keeps trying in the background.
         </p>
       )}
       {w.state === "connected" && w.ip && (
         <p class="muted">
-          On your home Wi-Fi, open <span class="num">http://{w.ip}/</span> to reach the bridge.
+          With your phone on {w.ssid}, open{" "}
+          <span class="num">{w.networks ? `http://${BRIDGE_NAME}/` : `http://${w.ip}/`}</span> to reach the bridge
+          {w.networks ? `, or http://${w.ip}/ if that name doesn't open` : ""}. Your antennas and sweeps are saved
+          per address, so a new address starts empty: move them with Download backup and Restore backup below.
         </p>
       )}
     </>
   );
 }
 
+/** The bridge's own network: what to join when none of the saved networks is around. */
+function HotspotRows({ w }: { w: WifiStatus }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <>
+      <h4 class="sub-title">Bridge's own network</h4>
+      <div class="rows">
+        <div class="row">
+          <span>Name</span>
+          <span class="value">{w.apSsid}</span>
+        </div>
+        {w.apPassword && (
+          <div class="row">
+            <span>Password</span>
+            <span class="value">
+              {shown ? (
+                <span class="num">{w.apPassword}</span>
+              ) : (
+                <button class="link-btn" onClick={() => setShown(true)}>
+                  Show
+                </button>
+              )}
+            </span>
+          </div>
+        )}
+        <div class="row">
+          <span>Then open</span>
+          <span class="value num">http://{HOTSPOT_ADDRESS}/</span>
+        </div>
+      </div>
+      <p class="muted">
+        Always on, for places none of your saved networks reach. It has no internet, so your phone may hop back to
+        another network; saving that network here avoids the hop.
+      </p>
+    </>
+  );
+}
+
 function WifiSettings() {
   const w = wifi.value;
+  const saved = w ? (w.networks ?? (w.mode === "sta" && w.ssid ? [w.ssid] : [])) : [];
+  const multi = client.canSaveNetworks;
   const [ssid, setSsid] = useState("");
-  // Fill in the saved network name once the bridge reports it.
-  useEffect(() => {
-    if (w?.ssid) setSsid((cur) => cur || w.ssid!);
-  }, [w?.ssid]);
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
-  const send = async (mode: "ap" | "sta") => {
-    if (mode === "sta" && !ssid.trim()) {
-      setStatus({ text: "Enter your home Wi-Fi name.", error: true });
-      return;
-    }
+  const [busy, setBusy] = useState(false);
+  const online = link.value === "open";
+  const name = ssid.trim();
+  const updating = saved.includes(name);
+  const full = multi && !updating && saved.length >= 5;
+
+  const run = async (fn: () => Promise<void>, done: string) => {
+    setBusy(true);
+    setStatus(null);
     try {
-      await client.setWifi(mode, mode === "sta" ? ssid.trim() : undefined, mode === "sta" ? password : undefined);
-      setStatus({
-        text:
-          mode === "sta"
-            ? "Saved. The bridge is restarting and will join your Wi-Fi. Its own Resonance network stays on too."
-            : "Saved. The bridge is restarting as a hotspot only.",
-      });
+      await fn();
+      setStatus({ text: done });
+      return true;
     } catch (e) {
       setStatus({ text: (e as Error).message, error: true });
+      return false;
+    } finally {
+      setBusy(false);
     }
   };
+
+  const add = async () => {
+    if (!name) {
+      setStatus({ text: "Enter the Wi-Fi network's name.", error: true });
+      return;
+    }
+    if (password && (password.length < 8 || password.length > 64)) {
+      setStatus({ text: "Wi-Fi passwords are 8 to 63 characters. Leave it empty for an open network.", error: true });
+      return;
+    }
+    const ok = await run(
+      () => client.addWifiNetwork(name, password),
+      multi
+        ? updating
+          ? `Saved the new password for ${name}.`
+          : `Saved ${name}. The bridge joins it whenever it's in range and no other saved network is joined.`
+        : "Saved. The bridge is restarting and will join your Wi-Fi. Its own Resonance network stays on too.",
+    );
+    if (ok) {
+      setSsid("");
+      setPassword("");
+    }
+  };
+
+  const forget = (net: string) =>
+    void run(
+      () => client.forgetWifiNetwork(net),
+      multi ? `Removed ${net}.` : "Removed. The bridge is restarting as a hotspot only.",
+    );
+
   return (
     <>
       <h3 class="section-title">Bridge Wi-Fi</h3>
       <p class="muted">
-        The bridge always runs its own Resonance network. It can also join your home Wi-Fi, so you can reach it
-        from your home network without switching networks.
+        Save the Wi-Fi networks you use, like home and the RV. The bridge joins whichever one is in range, so your
+        phone can stay on a network with internet and still reach the bridge.
       </p>
       {w && <WifiStatusRows w={w} />}
-      {!w && link.value === "open" && (
+      {!w && online && (
         <p class="muted">This bridge firmware doesn't report its Wi-Fi status. Update the bridge to see it here.</p>
       )}
+
+      {saved.length > 0 && (
+        <>
+          <h4 class="sub-title">Saved networks</h4>
+          <div class="rows saved-networks">
+            {saved.map((net) => (
+              <div class="row" key={net}>
+                <span class="wifi-state">
+                  {net}
+                  {w?.state === "connected" && w.ssid === net && <span class="tag">In use</span>}
+                </span>
+                <button class="link-btn danger" disabled={!online || busy} onClick={() => forget(net)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {w && !multi && saved.length > 0 && (
+        <p class="muted">Update the bridge to save more than one network. This firmware remembers only one.</p>
+      )}
+
+      <h4 class="sub-title">{saved.length ? "Add a network" : "Join a network"}</h4>
       <label class="field">
-        <span>Home Wi-Fi name</span>
-        <input type="text" autocapitalize="off" value={ssid} onInput={(e) => setSsid((e.target as HTMLInputElement).value)} />
+        <span>Wi-Fi name</span>
+        <input
+          type="text"
+          autocapitalize="off"
+          autocomplete="off"
+          spellcheck={false}
+          maxLength={32}
+          value={ssid}
+          onInput={(e) => setSsid((e.target as HTMLInputElement).value)}
+        />
       </label>
       <label class="field">
         <span>Password</span>
-        <input type="password" value={password} onInput={(e) => setPassword((e.target as HTMLInputElement).value)} />
+        <input
+          type="password"
+          autocomplete="new-password"
+          maxLength={64}
+          value={password}
+          onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+        />
       </label>
+      <p class="muted">The bridge only sees 2.4 GHz Wi-Fi. Passwords stay on the bridge and aren't shown again.</p>
+      {full && <p class="field-error">The bridge can save up to 5 networks. Remove one first.</p>}
       {status && (
         <p class={status.error ? "field-error" : "saved"} role="status">
           {status.text}
         </p>
       )}
-      <div class="actions">
-        <button class="btn" disabled={link.value !== "open"} onClick={() => send("sta")}>
-          Join home Wi-Fi
-        </button>
-        <button class="btn" disabled={link.value !== "open"} onClick={() => send("ap")}>
-          Hotspot only
+      <div class="actions single">
+        <button class="btn primary" disabled={!online || busy || full} onClick={() => void add()}>
+          {updating ? "Update password" : "Save network"}
         </button>
       </div>
+
+      {w && <HotspotRows w={w} />}
     </>
   );
 }

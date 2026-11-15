@@ -15,6 +15,8 @@ export type ClientMessage =
   | ({ v: 1; type: "display" } & DisplayView)
   | { v: 1; type: "display.off" }
   | { v: 1; type: "wifi.set"; mode: "ap" | "sta"; ssid?: string; password?: string }
+  | { v: 1; type: "wifi.add"; ssid: string; password: string }
+  | { v: 1; type: "wifi.forget"; ssid: string }
   | { v: 1; type: "ota.begin"; target: "firmware" | "app"; size: number }
   | { v: 1; type: "update.check" }
   | { v: 1; type: "update.install" };
@@ -46,11 +48,19 @@ export interface DeviceStatus {
   features?: string[];
 }
 
-/** The bridge's Wi-Fi. `mode: "sta"` means it also joins home Wi-Fi (`ssid`). */
+/**
+ * The bridge's Wi-Fi. `mode: "sta"` means it has saved networks (home, RV, ...) and joins
+ * whichever is in range; `ssid` is the one it's joining or joined.
+ */
 export interface WifiStatus {
   mode: "ap" | "sta";
   /** The bridge's own network. */
   apSsid: string;
+  /** Its password. Bridges before 0.5.0 leave it out. */
+  apPassword?: string;
+  /** Saved networks, by name. Bridges before 0.5.0 leave it out and remember only `ssid`. */
+  networks?: string[];
+  /** Absent while the bridge is still looking for a saved network in range. */
   ssid?: string;
   /** "failed" means the last attempt failed; the bridge keeps retrying. */
   state?: "connecting" | "connected" | "failed";
