@@ -41,6 +41,7 @@ export type Route =
   | { name: "tune"; targetHz?: number }
   | { name: "find"; targetHz?: number; profileId?: string }
   | { name: "meter" }
+  | { name: "buddistick" }
   | { name: "antennas" }
   | { name: "profile"; id: string }
   | { name: "settings" }
