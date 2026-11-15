@@ -70,10 +70,18 @@ static void io_send_binary(void *u, const uint8_t *d, size_t n)
     send_frame(K_BINARY, d, n);
 }
 
-static bool io_wifi_set(void *u, bool sta, const char *ssid, const char *pw)
+static bool io_wifi_add(void *u, const char *ssid, const char *pw, char *err, size_t cap)
 {
     char m[160];
-    snprintf(m, sizeof m, "wifi.set %s ssid=%s (ignored on host)", sta ? "sta" : "ap", ssid);
+    snprintf(m, sizeof m, "wifi.add ssid=%s (ignored on host)", ssid);
+    send_frame(K_LOG, m, strlen(m));
+    return true;
+}
+
+static bool io_wifi_forget(void *u, const char *ssid)
+{
+    char m[160];
+    snprintf(m, sizeof m, "wifi.forget ssid=%s (ignored on host)", ssid[0] ? ssid : "(all)");
     send_frame(K_LOG, m, strlen(m));
     return true;
 }
@@ -185,7 +193,8 @@ int main(void)
         .serial_write = io_serial_write,
         .send_text = io_send_text,
         .send_binary = io_send_binary,
-        .wifi_set = io_wifi_set,
+        .wifi_add = io_wifi_add,
+        .wifi_forget = io_wifi_forget,
         .log = io_log,
         .ota_begin = io_ota_begin,
         .ota_write = io_ota_write,

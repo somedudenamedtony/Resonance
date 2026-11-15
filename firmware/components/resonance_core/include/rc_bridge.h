@@ -21,26 +21,32 @@
 extern "C" {
 #endif
 
-#define RC_BRIDGE_VERSION "0.4.1"
+#define RC_BRIDGE_VERSION "0.5.0"
 #define RC_SHELL_BUF_SIZE 32768
 #define RC_MAX_SCAN_POINTS 10001
 #define RC_MAX_SEGMENT_POINTS 401
 
 // Wi-Fi as the platform sees it, reported to the app in a `wifi` message.
 typedef enum {
-    RC_WIFI_OFF = 0,     // hotspot only, no home Wi-Fi configured
-    RC_WIFI_CONNECTING,  // joining home Wi-Fi (associating or waiting for an address)
-    RC_WIFI_CONNECTED,   // joined, has an IP address
+    RC_WIFI_OFF = 0,     // hotspot only, no Wi-Fi networks saved
+    RC_WIFI_CONNECTING,  // looking for a saved network, or joining one (`ssid`)
+    RC_WIFI_CONNECTED,   // joined `ssid`, has an IP address
     RC_WIFI_FAILED,      // the last attempt failed (`reason` says why); still retrying
 } rc_wifi_state_t;
+
+// How many Wi-Fi networks (e.g. home and RV) the bridge remembers. It joins whichever is in range.
+#define RC_WIFI_MAX_NETWORKS 5
 
 typedef struct {
     rc_wifi_state_t state;
     char ap_ssid[33];  // the bridge's own network
-    char ssid[33];     // home Wi-Fi, empty when hotspot only
-    char ip[16];       // address on home Wi-Fi, empty unless connected
+    char ap_pass[65];  // its password
+    char ssid[33];     // the saved network being joined or joined, empty while looking or hotspot only
+    char ip[16];       // address on that network, empty unless connected
     int8_t rssi;       // dBm, 0 unless connected
     char reason[64];   // why the last attempt failed, empty otherwise
+    uint8_t n_networks;                          // saved networks, 0 means hotspot only
+    char networks[RC_WIFI_MAX_NETWORKS][33];     // their names (passwords never leave the bridge)
 } rc_wifi_status_t;
 
 // Installing the latest GitHub release, as the platform sees it, reported in an `update` message.
@@ -68,8 +74,12 @@ typedef struct {
     void (*serial_write)(void *user, const uint8_t *data, size_t len);
     void (*send_text)(void *user, const char *json);
     void (*send_binary)(void *user, const uint8_t *data, size_t len);
-    // Optional. Return true if the settings were accepted.
-    bool (*wifi_set)(void *user, bool sta, const char *ssid, const char *password);
+    // Optional. Save a Wi-Fi network (or a new password for a saved one) and start using it if
+    // nothing better is joined. Return false and fill `err` if it can't be saved (e.g. the list is full).
+    bool (*wifi_add)(void *user, const char *ssid, const char *password, char *err, size_t err_cap);
+    // Optional. Forget a saved network; an empty `ssid` forgets them all (hotspot only).
+    // Return false if storage failed.
+    bool (*wifi_forget)(void *user, const char *ssid);
     // Optional. Fill in the current Wi-Fi status; polled about once a second.
     void (*wifi_status)(void *user, rc_wifi_status_t *out);
     // Optional log sink.

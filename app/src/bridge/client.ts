@@ -7,6 +7,7 @@ import {
   type UpdateTarget,
   FRAME_CAPTURE,
   frameKind,
+  type ClientMessage,
   type DeviceStatus,
   type DisplayView,
   parseServerMessage,
@@ -265,12 +266,31 @@ export class BridgeClient {
     });
   }
 
-  /** Ask the bridge to join home Wi-Fi (sta) or stay hotspot-only (ap). It restarts after "ok". */
-  setWifi(mode: "ap" | "sta", ssid?: string, password?: string): Promise<void> {
+  /** True when the bridge remembers several Wi-Fi networks (`wifi.add` / `wifi.forget`). */
+  get canSaveNetworks(): boolean {
+    return Array.isArray(this.wifi?.networks);
+  }
+
+  /**
+   * Save a Wi-Fi network on the bridge (or a new password for a saved one). It joins whichever saved
+   * network is in range, without restarting. Older bridges remember just this one and restart.
+   */
+  addWifiNetwork(ssid: string, password: string): Promise<void> {
+    if (!this.canSaveNetworks) return this.sendForOk({ v: PROTOCOL_VERSION, type: "wifi.set", mode: "sta", ssid, password }, "wifi.set");
+    return this.sendForOk({ v: PROTOCOL_VERSION, type: "wifi.add", ssid, password }, "wifi.add");
+  }
+
+  /** Forget a saved network. On older bridges this forgets the only one (hotspot only) and restarts. */
+  forgetWifiNetwork(ssid: string): Promise<void> {
+    if (!this.canSaveNetworks) return this.sendForOk({ v: PROTOCOL_VERSION, type: "wifi.set", mode: "ap" }, "wifi.set");
+    return this.sendForOk({ v: PROTOCOL_VERSION, type: "wifi.forget", ssid }, "wifi.forget");
+  }
+
+  private sendForOk(msg: ClientMessage, okFor: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.transport.send({ v: PROTOCOL_VERSION, type: "wifi.set", mode, ssid, password });
-        this.okWaiters.push({ for: "wifi.set", resolve, reject });
+        this.transport.send(msg);
+        this.okWaiters.push({ for: okFor, resolve, reject });
       } catch (e) {
         reject(e);
       }

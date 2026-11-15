@@ -53,9 +53,14 @@ static void io_send_binary(void *u, const uint8_t *d, size_t n)
     web_broadcast_binary(d, n);
 }
 
-static bool io_wifi_set(void *u, bool sta, const char *ssid, const char *pw)
+static bool io_wifi_add(void *u, const char *ssid, const char *pw, char *err, size_t cap)
 {
-    return wifi_save_and_restart(sta, ssid, pw);
+    return wifi_add_network(ssid, pw, err, cap);
+}
+
+static bool io_wifi_forget(void *u, const char *ssid)
+{
+    return wifi_forget_network(ssid);
 }
 
 static void io_wifi_status(void *u, rc_wifi_status_t *out)
@@ -123,7 +128,8 @@ static void bridge_task(void *arg)
         .serial_write = io_serial_write,
         .send_text = io_send_text,
         .send_binary = io_send_binary,
-        .wifi_set = io_wifi_set,
+        .wifi_add = io_wifi_add,
+        .wifi_forget = io_wifi_forget,
         .wifi_status = io_wifi_status,
         .log = io_log,
         .ota_begin = ota_begin,

@@ -19,7 +19,7 @@ firmware/
 ├── main/                        ESP32-only glue, no protocol logic
 │   ├── bridge_task.c            one task owns the core; everything else posts events
 │   ├── usb_link.c               USB host CDC-ACM to the NanoVNA
-│   ├── wifi.c                   AP "Resonance-XXXX" (+ optional home Wi-Fi)
+│   ├── wifi.c                   AP "Resonance-XXXX" + up to 5 saved networks, mDNS
 │   ├── web.c                    app from LittleFS, WebSocket at /ws
 │   ├── ota.c                    writes updates; rollback probation for new firmware
 │   ├── release_update.c         checks GitHub releases and installs them
@@ -77,6 +77,10 @@ The serial log prints the Wi-Fi name and password on boot:
  Password:      k7wmq2rx
  Then open:     http://192.168.4.1/
 ```
+
+The app's Settings shows that password too (under Bridge Wi-Fi), and saves up to 5 other networks
+(home, RV, ...). The bridge joins whichever saved network is in range, without restarting, and
+answers to http://resonance.local/ on every network.
 
 ## Wiring
 

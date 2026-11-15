@@ -20,7 +20,9 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `capture` | — | `capture.begin`, binary frames of kind `0x03`, `capture.end` |
 | `display` | `startHz`, `stopHz`, `markersHz?: number[]` (≤ 4, inside the range), `traces?: string[]` (1–4 of `logmag phase smith polar linear swr real imag r x z`) | nothing (`error` `bad_request` if invalid) |
 | `display.off` | — | nothing |
-| `wifi.set` | `mode: "ap" \| "sta"`, `ssid?: string`, `password?: string` | `ok`, then the bridge restarts Wi-Fi |
+| `wifi.add` | `ssid: string`, `password: string` (empty for an open network) | `ok` then `wifi`, or `error` (e.g. the list is full). Saves the network, or a new password for a saved one; no restart |
+| `wifi.forget` | `ssid: string` | `ok` then `wifi`; leaves that network if it's joined; no restart |
+| `wifi.set` | `mode: "ap" \| "sta"`, `ssid?: string`, `password?: string` | `ok`. Older apps: since 0.5.0 `sta` works like `wifi.add` and `ap` forgets every saved network. Before 0.5.0 it replaced the one network and restarted |
 | `ota.begin` | `target: "firmware" \| "app"`, `size: number` | `ok`; app then sends the image as binary frames of kind `0x02`; each gets `ota.ack`; the last gets `ok` `for: "ota.end"` (or `error`) |
 | `update.check` | — | `update` (`checking`, then `current`, `available` or `failed`), or `error` `busy` |
 | `update.install` | — | `update` (`checking`, `installing` with progress, then `done` and a restart, or `failed`), or `error` |
@@ -30,7 +32,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | `type` | Fields |
 | --- | --- |
 | `device` | `connected: boolean`, `model?: string`, `firmware?: string`, `maxPoints?: number`, `bridgeVersion: string`, `features?: string[]` |
-| `wifi` | `mode: "ap" \| "sta"`, `apSsid: string`, `ssid?: string`, `state?: "connecting" \| "connected" \| "failed"`, `ip?: string`, `rssi?: number` (dBm), `reason?: string` |
+| `wifi` | `mode: "ap" \| "sta"`, `apSsid: string`, `apPassword?: string`, `networks?: string[]`, `ssid?: string`, `state?: "connecting" \| "connected" \| "failed"`, `ip?: string`, `rssi?: number` (dBm), `reason?: string` |
 | `scan.begin` | `id`, `points`, `ports` |
 | `scan.end` | `id`, `durationMs`, `cancelled?: boolean` |
 | `raw.reply` | `command`, `text` |
@@ -44,10 +46,15 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 The bridge sends `device` unsolicited whenever the NanoVNA connects or disconnects.
 
 The bridge sends `wifi` after `device` when an app connects or says `hello`, and again whenever
-its Wi-Fi changes (signal strength alone doesn't count). With `mode: "sta"` it is also joining
-home Wi-Fi `ssid`: `state` says how that is going, `ip` and `rssi` are present once connected, and
-`reason` says in plain words why the last attempt failed (it keeps retrying). Older firmware
-never sends `wifi`.
+its Wi-Fi changes (signal strength alone doesn't count). `networks` lists the saved networks by
+name (up to 5; passwords are never sent back) and `apPassword` is the password of the bridge's own
+network; bridges before 0.5.0 leave both out. With `mode: "sta"` (at least one saved network) the
+bridge joins whichever saved network is in range, preferring ones that haven't just failed, then the
+strongest signal. `ssid` is the one it's joining or joined (absent while it's still looking),
+`state` says how that is going, `ip` and `rssi` are present once connected, and `reason` says in
+plain words why the last attempt failed (it keeps retrying, less often the longer nothing works).
+The bridge answers to `resonance.local` (mDNS) on every network. Older firmware never sends
+`wifi`.
 
 The bridge sends `update` after `wifi` when an app connects or says `hello`, and again whenever
 it changes (about once a second while installing). It describes the latest GitHub release, which
