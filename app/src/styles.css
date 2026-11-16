@@ -303,6 +303,24 @@ button {
   font-weight: 600;
 }
 
+.status-battery,
+.battery-value {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-battery {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.battery-gauge.low {
+  color: var(--poor);
+}
+
 /* Home */
 .brand {
   display: flex;

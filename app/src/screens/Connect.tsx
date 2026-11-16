@@ -1,11 +1,15 @@
 import { useRef, useState } from "preact/hooks";
 import { rgb565beToRgba } from "../bridge/protocol";
 import { SIM_ANTENNAS, SimulatedTransport } from "../bridge/simulator";
-import { client, device, go, link } from "../state";
+import { batteryDetail } from "../battery";
+import { BatteryGauge } from "../components/BatteryGauge";
+import { battery, client, device, go, link } from "../state";
 
 export function Connect() {
   const d = device.value;
   const l = link.value;
+  const mV = d?.connected ? battery.value?.nanovna?.mV : undefined;
+  const bridgeMv = l === "open" ? battery.value?.bridge?.mV : undefined;
   const sim = client.transport instanceof SimulatedTransport ? client.transport : null;
   const [antennaId, setAntennaId] = useState(sim?.options.antennaId ?? "");
   const [plugged, setPlugged] = useState(sim?.options.deviceConnected ?? true);
@@ -32,6 +36,15 @@ export function Connect() {
           <span>Address</span>
           <span class="value muted">{client.transport.label}</span>
         </div>
+        {bridgeMv ? (
+          <div class="row">
+            <span>Bridge battery</span>
+            <span class="value num battery-value">
+              <BatteryGauge mV={bridgeMv} />
+              {batteryDetail(bridgeMv)}
+            </span>
+          </div>
+        ) : null}
         <div class="row">
           <span>NanoVNA</span>
           <span class="value">{d?.connected ? (d.model ?? "Connected") : "Not detected"}</span>
@@ -42,7 +55,21 @@ export function Connect() {
             <span class="value num">{d.firmware ?? "Unknown"}</span>
           </div>
         )}
+        {mV ? (
+          <div class="row">
+            <span>NanoVNA battery</span>
+            <span class="value num battery-value">
+              <BatteryGauge mV={mV} />
+              {batteryDetail(mV)}
+            </span>
+          </div>
+        ) : null}
       </div>
+      {mV ? (
+        <p class="muted" style={{ marginTop: "8px" }}>
+          The NanoVNA charges from the bridge while it's plugged in, so the battery reads a little high until you unplug it.
+        </p>
+      ) : null}
 
       {l !== "open" && !sim && (
         <p class="muted" style={{ marginTop: "12px" }}>

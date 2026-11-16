@@ -76,6 +76,39 @@ static void send_device(rc_bridge_t *b)
     send_json(b, o);
 }
 
+// Battery readings: the NanoVNA's (once read; not for a device without a battery, which reads
+// 0 mV) and the bridge's own (when a divider is wired). With neither, nothing is sent unless
+// `force` (a reading just went away).
+static void send_battery(rc_bridge_t *b, bool force)
+{
+    bool nv = b->dev == RC_DEV_READY && b->vbat_mv;
+    if (!nv && !b->bridge_mv && !force) return;
+    cJSON *o = msg("battery");
+    if (nv) cJSON_AddNumberToObject(cJSON_AddObjectToObject(o, "nanovna"), "mV", b->vbat_mv);
+    if (b->bridge_mv) cJSON_AddNumberToObject(cJSON_AddObjectToObject(o, "bridge"), "mV", b->bridge_mv);
+    b->vbat_sent_mv = nv ? b->vbat_mv : 0;
+    b->bridge_sent_mv = b->bridge_mv;
+    send_json(b, o);
+}
+
+static bool battery_moved(uint16_t now, uint16_t sent)
+{
+    int diff = (int)now - (int)sent;
+    return diff >= RC_BATTERY_DELTA_MV || diff <= -RC_BATTERY_DELTA_MV;
+}
+
+// Read the bridge's own battery when due; send it if it appeared, went away or moved.
+static void poll_bridge_battery(rc_bridge_t *b)
+{
+    if (!b->io.bridge_battery || (int32_t)(b->now - b->bridge_batt_due_ms) < 0) return;
+    b->bridge_batt_due_ms = b->now + RC_BATTERY_POLL_MS;
+    uint16_t mv = 0;
+    if (!b->io.bridge_battery(b->io.user, &mv)) mv = 0;
+    b->bridge_mv = mv;
+    bool appeared_or_gone = (mv == 0) != (b->bridge_sent_mv == 0);
+    if (appeared_or_gone || (mv && battery_moved(mv, b->bridge_sent_mv))) send_battery(b, true);
+}
+
 static const char *wifi_state_name(rc_wifi_state_t s)
 {
     switch (s) {
@@ -282,6 +315,9 @@ void rc_bridge_device_attached(rc_bridge_t *b, uint32_t now_ms)
     b->firmware[0] = 0;
     b->max_points = DEFAULT_MAX_POINTS;
     b->binary = false;
+    b->vbat_ok = true;  // until it answers `vbat` with something else
+    b->vbat_mv = 0;
+    b->vbat_sent_mv = 0;
     b->lcd_w = 320;  // original NanoVNA screen; NanoVNA-D reports its size in `info`
     b->lcd_h = 240;
     logf_(b, "NanoVNA attached, probing");
@@ -308,6 +344,7 @@ void rc_bridge_device_detached(rc_bridge_t *b, uint32_t now_ms)
         send_error(b, "no_device", "The NanoVNA was disconnected.", b->queued_scan.id);
         b->has_queued_scan = false;
     }
+    b->vbat_mv = 0;
     logf_(b, "NanoVNA detached");
     send_device(b);
 }
@@ -323,6 +360,7 @@ void rc_bridge_client_connected(rc_bridge_t *b, uint32_t now_ms)
 {
     b->now = now_ms;
     send_device(b);
+    send_battery(b, false);
     poll_wifi(b, true);
     poll_update(b, true);
 }
@@ -342,6 +380,7 @@ void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms)
         poll_update(b, false);
         b->wifi_next_ms = now_ms + RC_WIFI_POLL_MS;
     }
+    poll_bridge_battery(b);
 }
 
 // ---------- jobs ----------
@@ -468,6 +507,14 @@ static void pump(rc_bridge_t *b)
         (int32_t)(b->now - b->disp_due_ms) >= 0) {
         start_display(b);
     }
+    // Battery last, only when nothing else wants the shell. `vbat` answers in a few ms.
+    if (b->job == RC_JOB_NONE && !b->has_queued_scan && b->dev == RC_DEV_READY && b->vbat_ok &&
+        (int32_t)(b->now - b->vbat_due_ms) >= 0) {
+        b->vbat_due_ms = b->now + RC_BATTERY_POLL_MS;
+        b->job = RC_JOB_BATTERY;
+        if (!rc_shell_send(&b->shell, "vbat", RC_RESP_TEXT, 0, 0, b->now, RAW_TIMEOUT_MS, on_shell_done, b))
+            b->job = RC_JOB_NONE;
+    }
 }
 
 static void finish_probe(rc_bridge_t *b)
@@ -479,6 +526,7 @@ static void finish_probe(rc_bridge_t *b)
         b->disp_due_ms = b->now;
     }
     if (!b->model[0]) snprintf(b->model, sizeof b->model, "NanoVNA");
+    b->vbat_due_ms = b->now;  // read the battery as soon as the shell is free
     logf_(b, "NanoVNA ready: %s, firmware %s, %u points, %s scans", b->model, b->firmware, b->max_points,
           b->binary ? "binary" : "text");
     send_device(b);
@@ -603,6 +651,38 @@ static void handle_raw(rc_bridge_t *b, rc_shell_status_t st, const char *text)
     send_json(b, o);
 }
 
+int rc_bridge_parse_vbat(const char *text)
+{
+    while (*text == ' ' || *text == '\r' || *text == '\n' || *text == '\t') text++;
+    if (*text < '0' || *text > '9') return -1;
+    long mv = 0;
+    while (*text >= '0' && *text <= '9') {
+        mv = mv * 10 + (*text++ - '0');
+        if (mv > 20000) return -1;
+    }
+    while (*text == ' ') text++;
+    if (text[0] != 'm' || text[1] != 'V') return -1;
+    return (int)mv;
+}
+
+static void handle_battery(rc_bridge_t *b, rc_shell_status_t st, const char *text)
+{
+    b->job = RC_JOB_NONE;
+    if (st == RC_SHELL_TIMEOUT) {
+        start_probe(b, PROBE_RETRY_MS);  // the shell is stuck; resync
+        return;
+    }
+    if (st != RC_SHELL_OK) return;
+    int mv = rc_bridge_parse_vbat(text);
+    if (mv < 0) {
+        b->vbat_ok = false;  // firmware without `vbat` ("vbat?"); don't ask again
+        logf_(b, "NanoVNA doesn't report its battery");
+        return;
+    }
+    b->vbat_mv = (uint16_t)mv;
+    if (b->vbat_mv && (!b->vbat_sent_mv || battery_moved(b->vbat_mv, b->vbat_sent_mv))) send_battery(b, false);
+}
+
 static void handle_display(rc_bridge_t *b, rc_shell_status_t st)
 {
     if (st == RC_SHELL_TIMEOUT) {
@@ -699,6 +779,9 @@ static void on_shell_done(void *ctx, rc_shell_status_t st, const uint8_t *body, 
     case RC_JOB_DISPLAY:
         handle_display(b, st);
         break;
+    case RC_JOB_BATTERY:
+        handle_battery(b, st, text ? text : "");
+        break;
     case RC_JOB_CAPTURE:  // handled above
     case RC_JOB_NONE:
         break;
@@ -748,9 +831,10 @@ static void handle_scan_msg(rc_bridge_t *b, const cJSON *o)
     if (shell_free) {
         start_scan(b, &req);
         pump(b);
-    } else if (b->job == RC_JOB_NONE || b->job == RC_JOB_DISPLAY || (b->job == RC_JOB_SCAN && b->scan_cancelled)) {
-        // The previous (cancelled) scan's reply is still draining, or the screen is being
-        // updated (it stops after the current command); run this one next.
+    } else if (b->job == RC_JOB_NONE || b->job == RC_JOB_DISPLAY || b->job == RC_JOB_BATTERY ||
+               (b->job == RC_JOB_SCAN && b->scan_cancelled)) {
+        // The previous (cancelled) scan's reply is still draining, the screen is being updated
+        // (it stops after the current command) or the battery is being read; run this one next.
         if (b->has_queued_scan) send_error(b, "busy", "A scan is already queued.", iid);
         else {
             b->queued_scan = req;
@@ -1094,6 +1178,7 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
         send_error(b, "bad_request", "unsupported protocol version or missing type", -1);
     } else if (strcmp(type, "hello") == 0) {
         send_device(b);
+        send_battery(b, false);
         poll_wifi(b, true);
         poll_update(b, true);
     } else if (strcmp(type, "scan") == 0) {
