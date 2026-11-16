@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { batteryDetail, batteryPercent } from "../src/battery";
+import { batteryDetail, batteryPercent, lowestBattery } from "../src/battery";
 
 describe("batteryPercent", () => {
   it("clamps at full and empty", () => {
@@ -26,5 +26,18 @@ describe("batteryPercent", () => {
 
   it("describes a reading", () => {
     expect(batteryDetail(3910)).toBe("3.91 V, about 69%");
+  });
+});
+
+describe("lowestBattery", () => {
+  it("picks whichever battery runs out first", () => {
+    expect(lowestBattery({ nanovna: { mV: 3700 }, bridge: { mV: 4000 } }, true)).toEqual({ name: "NanoVNA", mV: 3700 });
+    expect(lowestBattery({ nanovna: { mV: 4100 }, bridge: { mV: 3600 } }, true)).toEqual({ name: "Bridge", mV: 3600 });
+  });
+
+  it("leaves out the NanoVNA when it isn't connected, and handles nothing to show", () => {
+    expect(lowestBattery({ nanovna: { mV: 3500 }, bridge: { mV: 4000 } }, false)).toEqual({ name: "Bridge", mV: 4000 });
+    expect(lowestBattery({}, true)).toBeNull();
+    expect(lowestBattery(null, true)).toBeNull();
   });
 });

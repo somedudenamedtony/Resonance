@@ -75,7 +75,7 @@ export class BridgeClient {
   wifi: WifiStatus | null = null;
   /** Sent by bridge firmware that can update itself from GitHub; null otherwise. */
   release: ReleaseUpdateStatus | null = null;
-  /** Battery readings; null until the bridge sends one, and again once the NanoVNA goes. */
+  /** Battery readings; null until the bridge sends one. The NanoVNA's goes when it disconnects. */
   battery: BatteryStatus | null = null;
   onChange?: () => void;
 
@@ -351,7 +351,10 @@ export class BridgeClient {
       case "device": {
         const { v: _v, type: _t, ...status } = msg;
         this.device = status;
-        if (!status.connected) this.battery = null;
+        if (!status.connected && this.battery?.nanovna) {
+          const { nanovna: _gone, ...rest } = this.battery;
+          this.battery = rest.bridge ? rest : null;
+        }
         this.flushDisplay();
         if (!status.connected) this.failPending(new BridgeError("no_device", "The NanoVNA was disconnected."));
         this.changed();

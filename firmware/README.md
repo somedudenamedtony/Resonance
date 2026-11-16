@@ -90,6 +90,13 @@ answers to http://resonance.local/ on every network.
 - **UART** port → computer for flashing and logs, and 5 V power.
 - If the NanoVNA doesn't enumerate, bridge the board's **IN-OUT** pad so the USB port
   supplies 5 V.
+- Optional, to see the bridge's own battery in the app: two 100k resistors in series from the
+  18650's **+** terminal to **GND**, with the middle joined to **GPIO1**. That halves the cell's
+  3.0–4.2 V to 1.5–2.1 V for the ADC, and draws about 20 µA. The bridge spots the divider on its
+  own (it checks every 30 s, no restart needed); with nothing wired the app just doesn't show a
+  bridge battery. Another ADC1 pin (GPIO2–10, not a strapping pin) works with
+  `RESONANCE_BATTERY_GPIO=<n>`, and other resistor values with
+  `RESONANCE_BATTERY_DIVIDER=<(top + bottom) / bottom>`.
 
 ## First flash checklist (M1 exit: `version` over Wi-Fi)
 

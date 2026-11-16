@@ -33,7 +33,7 @@ Every JSON message has `v` (protocol version, currently `1`) and `type`.
 | --- | --- |
 | `device` | `connected: boolean`, `model?: string`, `firmware?: string`, `maxPoints?: number`, `bridgeVersion: string`, `features?: string[]` |
 | `wifi` | `mode: "ap" \| "sta"`, `apSsid: string`, `apPassword?: string`, `networks?: string[]`, `ssid?: string`, `state?: "connecting" \| "connected" \| "failed"`, `ip?: string`, `rssi?: number` (dBm), `reason?: string` |
-| `battery` | `nanovna?: { mV: number }` (the NanoVNA's own battery) |
+| `battery` | `nanovna?: { mV: number }` (the NanoVNA's own battery), `bridge?: { mV: number }` (the bridge's own cell) |
 | `scan.begin` | `id`, `points`, `ports` |
 | `scan.end` | `id`, `durationMs`, `cancelled?: boolean` |
 | `raw.reply` | `command`, `text` |
@@ -66,12 +66,16 @@ why it `failed`. `rolledBack` names a version that didn't start properly, so the
 back to `current`. `update.install` installs the latest release whatever its version (the app only
 offers it when newer). Older firmware never sends `update`.
 
-The bridge sends `battery` once it has read the NanoVNA's battery (`vbat`, right after the
-probe and then every 30 s while the shell is otherwise idle), again when the reading moves by
-20 mV or more, and after `device` when an app connects or says `hello`. Nothing is sent for a
-NanoVNA that reads 0 mV (no battery fitted) or whose firmware doesn't know `vbat`. The reading is
-dropped when the NanoVNA disconnects (`device` with `connected: false`). While the NanoVNA is
-powered over USB it charges, so the voltage reads high. Bridges before 0.5.3 never send `battery`.
+The bridge sends `battery` with every reading it has: `nanovna` once it has read the NanoVNA's
+battery (`vbat`, right after the probe and then every 30 s while the shell is otherwise idle), and
+`bridge` once it reads its own cell through a resistor divider (every 30 s; see
+`firmware/README.md`). It sends it again when a reading moves by 20 mV or more, appears or goes
+away, and after `device` when an app connects or says `hello`. Each message replaces the last, so
+one without `bridge` means the divider was disconnected. Nothing is sent for a NanoVNA that reads
+0 mV (no battery fitted) or whose firmware doesn't know `vbat`, or for a bridge with no divider.
+The app drops `nanovna` when the NanoVNA disconnects (`device` with `connected: false`). A battery
+that's charging reads high: the NanoVNA charges whenever it's plugged into the bridge. Bridges
+before 0.5.3 never send `battery`.
 
 Only one scan runs at a time. A `scan` while one is in flight gets `error` `busy`.
 

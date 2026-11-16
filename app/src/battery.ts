@@ -1,5 +1,7 @@
 // Turning a single-cell lithium battery voltage into a rough charge level.
 
+import type { BatteryStatus } from "./bridge/protocol";
+
 /** Resting voltage of a 1S Li-ion/LiPo cell (mV) against charge (%), from full to empty. */
 const CURVE: ReadonlyArray<readonly [number, number]> = [
   [4150, 100],
@@ -34,8 +36,16 @@ export function batteryPercent(mV: number): number {
 /** Below this the NanoVNA is close to shutting off. */
 export const LOW_BATTERY_PERCENT = 15;
 
-export function batteryLabel(mV: number): string {
-  return `${batteryPercent(mV)}%`;
+/**
+ * The battery to show in the status strip: whichever of the NanoVNA's and the bridge's is lower,
+ * since that one runs out first.
+ */
+export function lowestBattery(b: BatteryStatus | null, nanovnaConnected: boolean): { name: string; mV: number } | null {
+  const all: Array<{ name: string; mV: number }> = [];
+  if (nanovnaConnected && b?.nanovna) all.push({ name: "NanoVNA", mV: b.nanovna.mV });
+  if (b?.bridge) all.push({ name: "Bridge", mV: b.bridge.mV });
+  if (!all.length) return null;
+  return all.reduce((lo, x) => (batteryPercent(x.mV) < batteryPercent(lo.mV) ? x : lo));
 }
 
 export function batteryDetail(mV: number): string {

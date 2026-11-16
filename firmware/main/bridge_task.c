@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "battery.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -83,6 +84,11 @@ static void io_update_status(void *u, rc_update_status_t *out)
     release_update_status(out);
 }
 
+static bool io_bridge_battery(void *u, uint16_t *mv)
+{
+    return battery_read_mv(mv);
+}
+
 static void io_log(void *u, const char *msg)
 {
     ESP_LOGI(TAG, "%s", msg);
@@ -139,7 +145,9 @@ static void bridge_task(void *arg)
         .update_check = io_update_check,
         .update_install = io_update_install,
         .update_status = io_update_status,
+        .bridge_battery = io_bridge_battery,
     };
+    battery_init();
     rc_bridge_init(&s_bridge, &io, now_ms());
     ESP_LOGI(TAG, "bridge core %s running", RC_BRIDGE_VERSION);
 

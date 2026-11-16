@@ -76,16 +76,37 @@ static void send_device(rc_bridge_t *b)
     send_json(b, o);
 }
 
-// The NanoVNA's battery, once read. Nothing is sent before the first reading, or for a device
-// without a battery (it reads 0 mV).
-static void send_battery(rc_bridge_t *b)
+// Battery readings: the NanoVNA's (once read; not for a device without a battery, which reads
+// 0 mV) and the bridge's own (when a divider is wired). With neither, nothing is sent unless
+// `force` (a reading just went away).
+static void send_battery(rc_bridge_t *b, bool force)
 {
-    if (b->dev != RC_DEV_READY || !b->vbat_mv) return;
+    bool nv = b->dev == RC_DEV_READY && b->vbat_mv;
+    if (!nv && !b->bridge_mv && !force) return;
     cJSON *o = msg("battery");
-    cJSON *nv = cJSON_AddObjectToObject(o, "nanovna");
-    cJSON_AddNumberToObject(nv, "mV", b->vbat_mv);
-    b->vbat_sent_mv = b->vbat_mv;
+    if (nv) cJSON_AddNumberToObject(cJSON_AddObjectToObject(o, "nanovna"), "mV", b->vbat_mv);
+    if (b->bridge_mv) cJSON_AddNumberToObject(cJSON_AddObjectToObject(o, "bridge"), "mV", b->bridge_mv);
+    b->vbat_sent_mv = nv ? b->vbat_mv : 0;
+    b->bridge_sent_mv = b->bridge_mv;
     send_json(b, o);
+}
+
+static bool battery_moved(uint16_t now, uint16_t sent)
+{
+    int diff = (int)now - (int)sent;
+    return diff >= RC_BATTERY_DELTA_MV || diff <= -RC_BATTERY_DELTA_MV;
+}
+
+// Read the bridge's own battery when due; send it if it appeared, went away or moved.
+static void poll_bridge_battery(rc_bridge_t *b)
+{
+    if (!b->io.bridge_battery || (int32_t)(b->now - b->bridge_batt_due_ms) < 0) return;
+    b->bridge_batt_due_ms = b->now + RC_BATTERY_POLL_MS;
+    uint16_t mv = 0;
+    if (!b->io.bridge_battery(b->io.user, &mv)) mv = 0;
+    b->bridge_mv = mv;
+    bool appeared_or_gone = (mv == 0) != (b->bridge_sent_mv == 0);
+    if (appeared_or_gone || (mv && battery_moved(mv, b->bridge_sent_mv))) send_battery(b, true);
 }
 
 static const char *wifi_state_name(rc_wifi_state_t s)
@@ -339,7 +360,7 @@ void rc_bridge_client_connected(rc_bridge_t *b, uint32_t now_ms)
 {
     b->now = now_ms;
     send_device(b);
-    send_battery(b);
+    send_battery(b, false);
     poll_wifi(b, true);
     poll_update(b, true);
 }
@@ -359,6 +380,7 @@ void rc_bridge_tick(rc_bridge_t *b, uint32_t now_ms)
         poll_update(b, false);
         b->wifi_next_ms = now_ms + RC_WIFI_POLL_MS;
     }
+    poll_bridge_battery(b);
 }
 
 // ---------- jobs ----------
@@ -658,9 +680,7 @@ static void handle_battery(rc_bridge_t *b, rc_shell_status_t st, const char *tex
         return;
     }
     b->vbat_mv = (uint16_t)mv;
-    int diff = (int)b->vbat_mv - (int)b->vbat_sent_mv;
-    if (b->vbat_mv && (!b->vbat_sent_mv || diff >= RC_BATTERY_DELTA_MV || diff <= -RC_BATTERY_DELTA_MV))
-        send_battery(b);
+    if (b->vbat_mv && (!b->vbat_sent_mv || battery_moved(b->vbat_mv, b->vbat_sent_mv))) send_battery(b, false);
 }
 
 static void handle_display(rc_bridge_t *b, rc_shell_status_t st)
@@ -1158,7 +1178,7 @@ void rc_bridge_client_text(rc_bridge_t *b, const char *json, size_t len, uint32_
         send_error(b, "bad_request", "unsupported protocol version or missing type", -1);
     } else if (strcmp(type, "hello") == 0) {
         send_device(b);
-        send_battery(b);
+        send_battery(b, false);
         poll_wifi(b, true);
         poll_update(b, true);
     } else if (strcmp(type, "scan") == 0) {

@@ -96,6 +96,9 @@ typedef struct {
     bool (*update_check)(void *user, char *err, size_t err_cap);
     bool (*update_install)(void *user, char *err, size_t err_cap);
     void (*update_status)(void *user, rc_update_status_t *out);
+    // Optional. The bridge's own battery in millivolts. Return false when there's nothing to
+    // read (no divider wired). Polled every RC_BATTERY_POLL_MS.
+    bool (*bridge_battery)(void *user, uint16_t *mv);
     void *user;
 } rc_bridge_io_t;
 
@@ -204,6 +207,10 @@ typedef struct rc_bridge {
     uint16_t vbat_mv;       // last reading, 0 until read
     uint16_t vbat_sent_mv;  // last reading sent to the app
     uint32_t vbat_due_ms;
+    // The bridge's own battery (io.bridge_battery), 0 when there's nothing to read
+    uint16_t bridge_mv;
+    uint16_t bridge_sent_mv;
+    uint32_t bridge_batt_due_ms;
 
     // Wi-Fi status last sent to the app
     rc_wifi_status_t wifi;

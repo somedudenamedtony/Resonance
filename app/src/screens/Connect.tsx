@@ -7,8 +7,9 @@ import { battery, client, device, go, link } from "../state";
 
 export function Connect() {
   const d = device.value;
-  const mV = d?.connected ? battery.value?.nanovna?.mV : undefined;
   const l = link.value;
+  const mV = d?.connected ? battery.value?.nanovna?.mV : undefined;
+  const bridgeMv = l === "open" ? battery.value?.bridge?.mV : undefined;
   const sim = client.transport instanceof SimulatedTransport ? client.transport : null;
   const [antennaId, setAntennaId] = useState(sim?.options.antennaId ?? "");
   const [plugged, setPlugged] = useState(sim?.options.deviceConnected ?? true);
@@ -35,6 +36,15 @@ export function Connect() {
           <span>Address</span>
           <span class="value muted">{client.transport.label}</span>
         </div>
+        {bridgeMv ? (
+          <div class="row">
+            <span>Bridge battery</span>
+            <span class="value num battery-value">
+              <BatteryGauge mV={bridgeMv} />
+              {batteryDetail(bridgeMv)}
+            </span>
+          </div>
+        ) : null}
         <div class="row">
           <span>NanoVNA</span>
           <span class="value">{d?.connected ? (d.model ?? "Connected") : "Not detected"}</span>

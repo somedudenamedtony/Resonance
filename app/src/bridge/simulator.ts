@@ -52,6 +52,8 @@ export interface SimulatorOptions {
   coax: CoaxModel | null;
   /** The simulated NanoVNA's battery in millivolts; 0 means no battery fitted. */
   batteryMv: number;
+  /** The simulated bridge's own battery in millivolts; 0 means no divider wired. */
+  bridgeBatteryMv: number;
 }
 
 export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
@@ -64,6 +66,7 @@ export const DEFAULT_SIM_OPTIONS: SimulatorOptions = {
   antenna: null,
   coax: null,
   batteryMv: 3910,
+  bridgeBatteryMv: 4020,
 };
 
 /**
@@ -112,8 +115,15 @@ export class SimulatedTransport implements Transport {
 
   private announceDevice(): void {
     this.emit(this.deviceMessage());
-    if (this.options.deviceConnected && this.options.batteryMv > 0)
-      this.emit({ v: PROTOCOL_VERSION, type: "battery", nanovna: { mV: this.options.batteryMv } });
+    const nv = this.options.deviceConnected && this.options.batteryMv > 0;
+    const br = this.options.bridgeBatteryMv > 0;
+    if (nv || br)
+      this.emit({
+        v: PROTOCOL_VERSION,
+        type: "battery",
+        ...(nv ? { nanovna: { mV: this.options.batteryMv } } : {}),
+        ...(br ? { bridge: { mV: this.options.bridgeBatteryMv } } : {}),
+      });
   }
 
   /** The antenna currently on port 1. */

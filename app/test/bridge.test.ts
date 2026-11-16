@@ -97,13 +97,22 @@ describe("bridge client against the simulator", () => {
     client.stop();
   });
 
-  it("reports the NanoVNA battery and drops it when the NanoVNA goes", async () => {
+  it("reports both batteries and drops the NanoVNA's when it goes", async () => {
     const { sim, client } = await connected();
+    expect(client.battery).toEqual({ nanovna: { mV: 3910 }, bridge: { mV: 4020 } });
+    sim.configure({ deviceConnected: false });
+    expect(client.battery).toEqual({ bridge: { mV: 4020 } });
+    sim.configure({ deviceConnected: true, batteryMv: 3650 });
+    expect(client.battery?.nanovna?.mV).toBe(3650);
+    client.stop();
+  });
+
+  it("forgets the NanoVNA battery entirely when the bridge has none of its own", async () => {
+    const { sim, client } = await connected();
+    sim.configure({ bridgeBatteryMv: 0 });
     expect(client.battery).toEqual({ nanovna: { mV: 3910 } });
     sim.configure({ deviceConnected: false });
     expect(client.battery).toBeNull();
-    sim.configure({ deviceConnected: true, batteryMv: 3650 });
-    expect(client.battery?.nanovna?.mV).toBe(3650);
     client.stop();
   });
 
