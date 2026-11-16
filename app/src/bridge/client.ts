@@ -18,6 +18,7 @@ import {
   type WifiStatus,
 } from "./protocol";
 import type { Transport } from "./transport";
+import { APP_VERSION } from "../version";
 
 export type LinkState = "connecting" | "open" | "closed";
 
@@ -62,7 +63,6 @@ interface PendingScan {
   timer: ReturnType<typeof setTimeout>;
 }
 
-const APP_VERSION = "0.1.0";
 
 /**
  * Talks to a bridge (real or simulated) over a Transport. Owns reconnects, the device

@@ -20,8 +20,8 @@ import {
   updateSettings,
   wifi,
 } from "../state";
+import { APP_VERSION } from "../version";
 
-const APP_VERSION = "0.2.0";
 
 export function Settings() {
   const s = settings.value;
@@ -541,7 +541,11 @@ function ReleaseUpdate() {
     }
   };
   const progress = r.state === "installing" && r.total ? (r.received ?? 0) / r.total : null;
-  const canInstall = r.latest !== undefined && r.latest !== r.current && (r.state === "available" || r.state === "failed");
+  // The app on the bridge can lag its firmware (e.g. after installing only resonance-bridge.bin
+  // from a file). Installing the release again rewrites both, so offer it then too.
+  const appBehind = r.latest !== undefined && APP_VERSION !== "dev" && APP_VERSION !== r.latest && r.latest === r.current;
+  const canInstall =
+    r.latest !== undefined && (r.latest !== r.current || appBehind) && (r.state === "available" || r.state === "failed" || appBehind);
   return (
     <>
       <div class="rows">
@@ -565,6 +569,11 @@ function ReleaseUpdate() {
       {r.state === "checking" && <p class="muted">Checking GitHub…</p>}
       {r.state === "current" && <p class="saved">Up to date.</p>}
       {r.state === "available" && <p class="saved">Version {r.latest} is ready to install.</p>}
+      {appBehind && r.state !== "installing" && (
+        <p class="saved">
+          The firmware is {r.current}, but this app is from {APP_VERSION}. Install {r.latest} to bring the app up to date too.
+        </p>
+      )}
       {r.state === "installing" && (
         <p class="muted">
           Downloading {r.step === "app" ? "the app" : "the firmware"}. The bridge keeps working until it restarts at
