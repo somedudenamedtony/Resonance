@@ -5,8 +5,10 @@
 #include <string.h>
 
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_tls.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -67,10 +69,63 @@ void release_update_status(rc_update_status_t *out)
 
 // ---- HTTP ----
 
+typedef struct {
+    esp_err_t err;
+    int code, flags;
+} tls_error_t;
+
+// esp_http_client only hands out the TLS layer's error through its error event.
+static esp_err_t on_http_event(esp_http_client_event_t *evt)
+{
+    if (evt->event_id == HTTP_EVENT_ERROR && evt->data && evt->user_data) {
+        tls_error_t *t = evt->user_data;
+        t->err = esp_tls_get_and_clear_last_error((esp_tls_error_handle_t)evt->data, &t->code, &t->flags);
+    }
+    return ESP_OK;
+}
+
+// Say why a connection failed, naming the host: the release check talks to api.github.com, but
+// downloads go to github.com and then GitHub's storage host. The secure connection needs about
+// 40 KB of RAM at once, which is the usual thing to run out of.
+static void explain_connect_failure(esp_http_client_handle_t c, esp_err_t e, tls_error_t *t, char *err, size_t cap)
+{
+    char url[160] = "";
+    esp_http_client_get_url(c, url, sizeof url);
+    const char *host = strstr(url, "://");
+    host = host ? host + 3 : "GitHub";
+    size_t host_len = strcspn(host, "/:?");
+    if (host_len > 40) host_len = 40;
+
+    esp_err_t tls = t->err;
+    int tls_code = t->code, tls_flags = t->flags;
+    *t = (tls_error_t){0};
+    int mbed = tls_code < 0 ? -tls_code : tls_code;  // mbedTLS's *_ALLOC_FAILED codes, sign dropped
+    ESP_LOGW(TAG, "connect to %.*s failed: %s, tls %s (0x%x, flags 0x%x), free internal %u, largest %u, psram %u",
+             (int)host_len, host, esp_err_to_name(e), esp_err_to_name(tls), mbed, tls_flags,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
+    const char *why;
+    if (tls == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME) why = "name lookup failed. Is the internet up?";
+    else if (tls == ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST || tls == ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT ||
+             tls == ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET)
+        why = "no answer. Is the internet up?";
+    else if (tls_flags) why = "its certificate wasn't trusted";
+    else if (tls == ESP_ERR_MBEDTLS_SSL_SETUP_FAILED || tls == ESP_ERR_NO_MEM || mbed == 0x7F00 /* SSL */ ||
+             mbed == 0x2880 /* X509 */ || mbed == 0x0010 /* bignum */)
+        why = "out of memory";
+    else if (tls) why = esp_err_to_name(tls);
+    else why = esp_err_to_name(e);
+    snprintf(err, cap, "Couldn't reach %.*s (%s)", (int)host_len, host, why);
+}
+
 // Open `url` and follow redirects (release downloads bounce to GitHub's storage host), the
 // same way esp_https_ota does. Returns a client positioned at the body, or NULL with `err`.
 static esp_http_client_handle_t open_url(const char *url, bool api, int64_t *length, char *err, size_t cap)
 {
+    static tls_error_t tls;  // only the updater task opens URLs, one at a time
+    tls = (tls_error_t){0};
     esp_http_client_config_t cfg = {
         .url = url,
         .crt_bundle_attach = esp_crt_bundle_attach,
@@ -78,6 +133,8 @@ static esp_http_client_handle_t open_url(const char *url, bool api, int64_t *len
         .timeout_ms = 20000,
         .buffer_size = 4096,
         .buffer_size_tx = 4096,  // signed download URLs are long
+        .event_handler = on_http_event,
+        .user_data = &tls,
     };
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
     if (!c) {
@@ -91,18 +148,26 @@ static esp_http_client_handle_t open_url(const char *url, bool api, int64_t *len
     for (int hops = 0; hops < 5; hops++) {
         esp_err_t e = esp_http_client_open(c, 0);
         if (e != ESP_OK) {
-            snprintf(err, cap, "Couldn't reach GitHub (%s). Is the internet up?", esp_err_to_name(e));
+            // One more go: a dropped packet or a busy moment shouldn't fail the whole update.
+            explain_connect_failure(c, e, &tls, err, cap);
+            vTaskDelay(pdMS_TO_TICKS(1500));
+            e = esp_http_client_open(c, 0);
+        }
+        if (e != ESP_OK) {
+            explain_connect_failure(c, e, &tls, err, cap);
             break;
         }
+        err[0] = 0;
         int64_t len = esp_http_client_fetch_headers(c);
         int status = esp_http_client_get_status_code(c);
         if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+            // Finish with this answer before moving on: switching host closes the connection.
+            char drain[256];
+            while (esp_http_client_read(c, drain, sizeof drain) > 0) {
+            }
             if (esp_http_client_set_redirection(c) != ESP_OK) {
                 snprintf(err, cap, "GitHub sent a redirect the bridge couldn't follow.");
                 break;
-            }
-            char drain[256];
-            while (esp_http_client_read(c, drain, sizeof drain) > 0) {
             }
             continue;
         }

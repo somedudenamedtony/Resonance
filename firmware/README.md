@@ -60,6 +60,13 @@ Once the bridge is on home Wi-Fi it checks GitHub for a newer release and the ap
 itself, writes both, and restarts once. A file upload in the same place still works without
 internet.
 
+Bridges before 0.5.4 often can't finish the download once the app is open (`Couldn't reach
+GitHub (ESP_ERR_HTTP_CONNECT)`): the secure connection ran out of internal RAM. Get 0.5.4 onto
+them once by hand: download `resonance-bridge.bin` from the release, choose it under **Or
+install from a file**, and after the restart tap Install to pull the matching app. If a
+download still fails, the message now names the host and the reason, and the serial log shows
+free memory.
+
 To publish a release, bump `RC_BRIDGE_VERSION` in
 `components/resonance_core/include/rc_bridge.h` and merge to `main`. When CI passes it creates
 release `v<version>` with the images attached.
