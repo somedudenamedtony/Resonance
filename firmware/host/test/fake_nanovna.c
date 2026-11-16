@@ -21,6 +21,7 @@ void fake_init(fake_nanovna_t *f, bool binary, uint16_t max_points)
     memset(f, 0, sizeof *f);
     f->binary = binary;
     f->max_points = max_points;
+    f->vbat_mv = -1;
     outs(f, "\r\nNanoVNA Shell\r\nch> ");
 }
 
@@ -119,6 +120,10 @@ static void execute(fake_nanovna_t *f)
         outs(f, m);
     } else if (!strcmp(argv[0], "help")) {
         outs(f, f->binary ? "Commands: scan scan_bin data version info help\r\n" : "Commands: scan data version info help\r\n");
+    } else if (!strcmp(argv[0], "vbat") && f->vbat_mv >= 0) {
+        char m[32];
+        snprintf(m, sizeof m, "%d mV\r\n", f->vbat_mv);
+        outs(f, m);
     } else if (!strcmp(argv[0], "scan")) {
         cmd_scan(f, argc, argv);
     } else if (!strcmp(argv[0], "capture")) {

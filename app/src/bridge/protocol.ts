@@ -92,12 +92,24 @@ export interface ReleaseUpdateStatus {
   rolledBack?: string;
 }
 
+/**
+ * Battery readings, each sent once read and again when it changes by 20 mV or more. `nanovna` is
+ * the NanoVNA's own battery (its `vbat` command); absent for a NanoVNA without a battery or
+ * firmware without `vbat`. `bridge` is the bridge's own cell, read through a resistor divider;
+ * absent until one is wired. Each message replaces the last. Bridges before 0.5.3 never send it.
+ */
+export interface BatteryStatus {
+  nanovna?: { mV: number };
+  bridge?: { mV: number };
+}
+
 export type ErrorCode = "no_device" | "timeout" | "busy" | "bad_request" | "internal";
 
 export type ServerMessage =
   | ({ v: 1; type: "device" } & DeviceStatus)
   | ({ v: 1; type: "wifi" } & WifiStatus)
   | ({ v: 1; type: "update" } & ReleaseUpdateStatus)
+  | ({ v: 1; type: "battery" } & BatteryStatus)
   | { v: 1; type: "scan.begin"; id: number; points: number; ports: Ports }
   | { v: 1; type: "scan.end"; id: number; durationMs: number; cancelled?: boolean }
   | { v: 1; type: "raw.reply"; command: string; text: string }

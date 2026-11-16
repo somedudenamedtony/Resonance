@@ -47,6 +47,8 @@ export interface NanoVnaOptions {
   msPerPoint: number;
   /** When true, the device ignores input (hung). */
   hung: boolean;
+  /** What `vbat` reports, in millivolts. 0 is a device with no battery fitted. */
+  batteryMv: number;
 }
 
 export const DEFAULT_OPTIONS: NanoVnaOptions = {
@@ -56,6 +58,7 @@ export const DEFAULT_OPTIONS: NanoVnaOptions = {
   noise: 0.001,
   msPerPoint: 0.5,
   hung: false,
+  batteryMv: 3980,
 };
 
 const MASK = { FREQ: 0x01, S11: 0x02, S21: 0x04, NO_CAL: 0x08, BINARY: 0x80 } as const;
@@ -205,6 +208,9 @@ export class NanoVnaEmulator {
         this.write(fakeNanoVnaScreen(w, h, this.lastSweep.s11));
         return;
       }
+      case "vbat":
+        this.write(`${this.options.batteryMv} mV${NL}`);
+        return;
       case "cal":
         this.write(`complete: open short load thru isoln${NL}`);
         return;
@@ -213,7 +219,7 @@ export class NanoVnaEmulator {
   }
 
   private commandList(): string[] {
-    const common = ["scan", "data", "sweep", "pause", "resume", "trace", "marker", "cal", "capture", "version", "info", "help"];
+    const common = ["scan", "data", "sweep", "pause", "resume", "trace", "marker", "cal", "capture", "version", "info", "help", "vbat"];
     return this.options.dialect === "nanovna-d" ? [...common, "scan_bin"] : common;
   }
 
