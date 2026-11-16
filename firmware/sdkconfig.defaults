@@ -21,6 +21,10 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 # HTTPS to GitHub for release downloads
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# Each secure connection needs ~40 KB in one go. Internal RAM is mostly taken by Wi-Fi, the web
+# server and USB once the app is open, so take it from the 8 MB PSRAM instead; otherwise the
+# update check and download fail with ESP_ERR_HTTP_CONNECT.
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 
 # Plain logs: Windows terminals show color codes as garbage
 CONFIG_LOG_COLORS=n
